@@ -88,7 +88,8 @@ async function getRobloxStats(userId) {
     };
 
     async function getRobloxCount(url, label, oldValue) {
-        const maxAttempts = 4;
+        // 🔥 10 tentatives maximum
+        const maxAttempts = 10;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -119,7 +120,6 @@ async function getRobloxStats(userId) {
                         `(tentative ${attempt}/${maxAttempts})`
                     );
 
-                    // Attente progressive en cas de rate limit
                     if (attempt < maxAttempts) {
                         const waitTime = 5000 * attempt;
 
@@ -152,7 +152,7 @@ async function getRobloxStats(userId) {
         }
 
         // Si Roblox refuse toutes les requêtes,
-        // on conserve la dernière valeur connue.
+        // conserver la dernière valeur connue.
         if (oldValue !== null && oldValue !== undefined) {
             console.log(
                 `💾 ${label} ${userId} : ancienne valeur conservée (${oldValue})`
@@ -250,6 +250,7 @@ async function createAccountEmbed(account) {
 
         const stats = await getRobloxStats(user.id);
 
+        // Petite pause avant l'avatar
         await sleep(3000);
 
         const avatar = await getAvatar(user.id);
