@@ -1,0 +1,28 @@
+module.exports = {
+    token: process.env.DISCORD_TOKEN,
+
+    clientId: "1554823119762362388",
+    guildId: "1554802553982558218",
+    ownerId: "1269318521448431735",
+
+    sellingChannelId: "1554814457526493254",
+
+    robloxAccounts: [
+        {
+            name: "5K acc",
+            username: "elyvanz"
+        },
+        {
+            name: "2K acc",
+            username: "Kourzix"
+        },
+        {
+            name: "500 acc",
+            username: "Orilynx"
+        },
+        {
+            name: "1K acc",
+            username: "Mallika_paris"
+        }
+    ]
+};
