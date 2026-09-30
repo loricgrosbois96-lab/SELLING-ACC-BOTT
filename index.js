@@ -42,7 +42,9 @@ async function getRobloxUser(username) {
     );
 
     if (!response.ok) {
-        throw new Error(`Roblox Users API : ${response.status}`);
+        throw new Error(
+            `Roblox Users API : ${response.status}`
+        );
     }
 
     const data = await response.json();
@@ -71,22 +73,38 @@ async function getRobloxStats(userId) {
         )
     ]);
 
-    // Afficher l'erreur exacte pour savoir quelle API bloque
-    if (!friends.ok) {
-        throw new Error(`Friends API : ${friends.status}`);
+    // Amis
+    let friendsData = { count: 0 };
+
+    if (friends.ok) {
+        friendsData = await friends.json();
+    } else {
+        console.log(
+            `⚠️ Friends API limitée (${friends.status}) pour ${userId}`
+        );
     }
 
-    if (!followers.ok) {
-        throw new Error(`Followers API : ${followers.status}`);
+    // Followers
+    let followersData = { count: 0 };
+
+    if (followers.ok) {
+        followersData = await followers.json();
+    } else {
+        console.log(
+            `⚠️ Followers API limitée (${followers.status}) pour ${userId}`
+        );
     }
 
-    if (!following.ok) {
-        throw new Error(`Following API : ${following.status}`);
-    }
+    // Following
+    let followingData = { count: 0 };
 
-    const friendsData = await friends.json();
-    const followersData = await followers.json();
-    const followingData = await following.json();
+    if (following.ok) {
+        followingData = await following.json();
+    } else {
+        console.log(
+            `⚠️ Following API limitée (${following.status}) pour ${userId}`
+        );
+    }
 
     return {
         friends: friendsData.count ?? 0,
@@ -283,7 +301,7 @@ async function updateSellingMessage() {
             "🎮 **Comptes Roblox disponibles**\n" +
             "━━━━━━━━━━━━━━━━━━━━\n" +
             "📊 Les informations sont récupérées automatiquement.\n" +
-            "🔄 Mise à jour toutes les **30 secondes**.\n\n" +
+            "🔄 Mise à jour toutes les **5 minutes**.\n\n" +
             "🔐 Certaines informations sont volontairement masquées.";
 
         const messages = await channel.messages.fetch({
@@ -332,7 +350,7 @@ client.once("ready", async () => {
     try {
         await updateSellingMessage();
 
-        // 🔄 Mise à jour toutes les 30 secondes
+        // 🔄 Mise à jour toutes les 5 minutes
         setInterval(async () => {
             try {
                 await updateSellingMessage();
@@ -342,10 +360,10 @@ client.once("ready", async () => {
                     error
                 );
             }
-        }, 30 * 1000);
+        }, 5 * 60 * 1000);
 
         console.log(
-            "🔄 Mise à jour Selling ACC toutes les 30 secondes activée !"
+            "🔄 Mise à jour Selling ACC toutes les 5 minutes activée !"
         );
 
     } catch (error) {
