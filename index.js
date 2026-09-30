@@ -17,15 +17,13 @@ const client = new Client({
 function maskLastTwo(value) {
     const text = String(value);
 
-    if (text.length <= 2) {
-        return "**";
-    }
+    if (text.length <= 2) return "**";
 
     return text.slice(0, -2) + "**";
 }
 
 // ─────────────────────────────────────────────
-// ⏱️ Pause
+// ⏱️ Petite pause entre les requêtes
 // ─────────────────────────────────────────────
 
 function sleep(ms) {
@@ -33,129 +31,48 @@ function sleep(ms) {
 }
 
 // ─────────────────────────────────────────────
-// 💾 Cache
+// 💾 Dernières statistiques connues
 // ─────────────────────────────────────────────
 
 const cachedStats = new Map();
 
 // ─────────────────────────────────────────────
-// 🔎 Rechercher utilisateur Roblox
+// 🔎 Rechercher un utilisateur Roblox
 // ─────────────────────────────────────────────
 
 async function getRobloxUser(username) {
-    try {
-        const response = await fetch(
-            "https://users.roblox.com/v1/usernames/users",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                body: JSON.stringify({
-                    usernames: [username],
-                    excludeBannedUsers: false
-                })
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(
-                `Roblox Users API : ${response.status}`
-            );
+    const response = await fetch(
+        "https://users.roblox.com/v1/usernames/users",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            },
+            body: JSON.stringify({
+                usernames: [username],
+                excludeBannedUsers: false
+            })
         }
-
-        const data = await response.json();
-
-        if (!data.data || data.data.length === 0) {
-            return null;
-        }
-
-        return data.data[0];
-
-    } catch (error) {
-        console.error(
-            `❌ Erreur recherche ${username}:`,
-            error.message
-        );
-
-        throw error;
-    }
-}
-
-// ─────────────────────────────────────────────
-// 📊 Récupérer une statistique Roblox
-// ─────────────────────────────────────────────
-
-async function fetchRobloxCount(
-    url,
-    label,
-    userId,
-    oldValue
-) {
-    const maxAttempts = 3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    "Accept": "application/json"
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                if (typeof data.count === "number") {
-                    console.log(
-                        `✅ ${label} ${userId} : ${data.count}`
-                    );
-
-                    return data.count;
-                }
-
-                console.log(
-                    `⚠️ ${label} ${userId} : réponse invalide`
-                );
-            } else {
-                console.log(
-                    `⚠️ ${label} ${userId} : HTTP ${response.status} ` +
-                    `(${attempt}/${maxAttempts})`
-                );
-            }
-
-        } catch (error) {
-            console.log(
-                `⚠️ ${label} ${userId} : erreur réseau ` +
-                `(${attempt}/${maxAttempts})`
-            );
-        }
-
-        if (attempt < maxAttempts) {
-            await sleep(2000 * attempt);
-        }
-    }
-
-    // IMPORTANT :
-    // On conserve l'ancienne valeur.
-    // On ne met jamais 0 automatiquement.
-    if (oldValue !== null && oldValue !== undefined) {
-        console.log(
-            `💾 ${label} ${userId} : ancienne valeur conservée (${oldValue})`
-        );
-
-        return oldValue;
-    }
-
-    console.log(
-        `⚠️ ${label} ${userId} : aucune valeur disponible`
     );
 
-    return "--";
+    if (!response.ok) {
+        throw new Error(
+            `Roblox Users API : ${response.status}`
+        );
+    }
+
+    const data = await response.json();
+
+    if (!data.data || data.data.length === 0) {
+        return null;
+    }
+
+    return data.data[0];
 }
 
 // ─────────────────────────────────────────────
-// 📊 Statistiques Roblox
+// 📊 Récupérer les statistiques Roblox
 // ─────────────────────────────────────────────
 
 async function getRobloxStats(userId) {
@@ -167,35 +84,92 @@ async function getRobloxStats(userId) {
         following: null
     };
 
-    console.log(
-        `📊 Récupération statistiques pour ${userId}`
-    );
+    // ─────────────────────────────────────────
+    // 🔢 Fonction pour récupérer un nombre Roblox
+    // ─────────────────────────────────────────
+
+    async function getRobloxCount(url, label, oldValue) {
+        const maxAttempts = 3;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        "Accept": "application/json"
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    if (typeof data.count === "number") {
+                        console.log(
+                            `✅ ${label} ${userId} : ${data.count}`
+                        );
+
+                        return data.count;
+                    }
+
+                    console.log(
+                        `⚠️ ${label} ${userId} : réponse Roblox invalide`
+                    );
+
+                } else {
+                    console.log(
+                        `⚠️ ${label} ${userId} : HTTP ${response.status} ` +
+                        `(${attempt}/${maxAttempts})`
+                    );
+                }
+
+            } catch (error) {
+                console.log(
+                    `⚠️ ${label} ${userId} : erreur réseau ` +
+                    `(${attempt}/${maxAttempts})`
+                );
+            }
+
+            // Attendre avant de réessayer
+            if (attempt < maxAttempts) {
+                await sleep(3000);
+            }
+        }
+
+        // Si Roblox n'a pas répondu correctement,
+        // on conserve l'ancienne valeur si elle existe.
+        if (oldValue !== null && oldValue !== undefined) {
+            console.log(
+                `💾 ${label} ${userId} : ancienne valeur conservée (${oldValue})`
+            );
+
+            return oldValue;
+        }
+
+        // Ne jamais inventer un 0 lorsqu'on n'a aucune donnée.
+        return 0;
+    }
 
     // 👥 Amis
-    const friends = await fetchRobloxCount(
+    const friends = await getRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/friends/count`,
         "Friends",
-        userId,
         oldStats.friends
     );
 
     await sleep(2000);
 
     // 👤 Followers
-    const followers = await fetchRobloxCount(
+    const followers = await getRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/followers/count`,
         "Followers",
-        userId,
         oldStats.followers
     );
 
     await sleep(2000);
 
     // ➡️ Following
-    const following = await fetchRobloxCount(
+    const following = await getRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/followings/count`,
         "Following",
-        userId,
         oldStats.following
     );
 
@@ -205,31 +179,27 @@ async function getRobloxStats(userId) {
         following
     };
 
+    // Sauvegarder les dernières valeurs connues
     cachedStats.set(key, stats);
+
+    console.log(
+        `📊 ${userId} → ${followers} followers`
+    );
 
     return stats;
 }
 
 // ─────────────────────────────────────────────
-// 🖼️ Avatar Roblox
+// 🖼️ Récupérer l'avatar Roblox
 // ─────────────────────────────────────────────
 
 async function getAvatar(userId) {
     try {
         const response = await fetch(
-            `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`,
-            {
-                headers: {
-                    "Accept": "application/json"
-                }
-            }
+            `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`
         );
 
         if (!response.ok) {
-            console.log(
-                `⚠️ Avatar API : ${response.status}`
-            );
-
             return null;
         }
 
@@ -238,61 +208,36 @@ async function getAvatar(userId) {
         return data.data?.[0]?.imageUrl || null;
 
     } catch (error) {
-        console.log(
-            `⚠️ Impossible de récupérer l'avatar ${userId}`
-        );
-
         return null;
     }
 }
 
 // ─────────────────────────────────────────────
-// 🔢 Formater statistique
-// ─────────────────────────────────────────────
-
-function formatStat(value) {
-    if (typeof value === "number") {
-        return value.toLocaleString("fr-FR");
-    }
-
-    return String(value);
-}
-
-// ─────────────────────────────────────────────
-// 🎮 Créer embed compte
+// 🎮 Créer l'embed d'un compte
 // ─────────────────────────────────────────────
 
 async function createAccountEmbed(account) {
     try {
-        console.log("");
-        console.log(
-            `🔎 Traitement de ${account.username}`
-        );
-
-        const user = await getRobloxUser(
-            account.username
-        );
+        const user = await getRobloxUser(account.username);
 
         if (!user) {
             return new EmbedBuilder()
                 .setTitle(`❌ ${account.name}`)
                 .setDescription(
                     `Le compte Roblox **${account.username}** est introuvable.`
-                )
-                .setFooter({
-                    text: "LoricBot • Roblox"
-                });
+                );
         }
 
-        const stats = await getRobloxStats(
-            user.id
+        console.log(
+            `🔎 Récupération des statistiques de ${account.username}...`
         );
 
-        await sleep(1000);
+        const stats = await getRobloxStats(user.id);
 
-        const avatar = await getAvatar(
-            user.id
-        );
+        // Petite pause avant de passer au compte suivant
+        await sleep(2000);
+
+        const avatar = await getAvatar(user.id);
 
         const embed = new EmbedBuilder()
             .setTitle(`🎮 ${account.name}`)
@@ -308,17 +253,17 @@ async function createAccountEmbed(account) {
                 },
                 {
                     name: "👥 Amis",
-                    value: `**${formatStat(stats.friends)}**`,
+                    value: `**${stats.friends.toLocaleString("fr-FR")}**`,
                     inline: true
                 },
                 {
                     name: "👤 Followers",
-                    value: `**${formatStat(stats.followers)}**`,
+                    value: `**${stats.followers.toLocaleString("fr-FR")}**`,
                     inline: true
                 },
                 {
                     name: "➡️ Following",
-                    value: `**${formatStat(stats.following)}**`,
+                    value: `**${stats.following.toLocaleString("fr-FR")}**`,
                     inline: true
                 }
             )
@@ -351,7 +296,7 @@ async function createAccountEmbed(account) {
 }
 
 // ─────────────────────────────────────────────
-// 💰 Prix
+// 💰 Prix des comptes
 // ─────────────────────────────────────────────
 
 function createPricesEmbed() {
@@ -414,45 +359,34 @@ function createPricesEmbed() {
 }
 
 // ─────────────────────────────────────────────
-// 🛒 Mise à jour Selling ACC
+// 🛒 Mettre à jour le salon Selling ACC
 // ─────────────────────────────────────────────
 
 async function updateSellingMessage() {
     try {
-        console.log("");
-        console.log("════════════════════════════════");
-        console.log("🔄 Mise à jour Selling ACC");
-        console.log("════════════════════════════════");
-
         const channel = await client.channels.fetch(
             config.sellingChannelId
         );
 
         if (!channel) {
-            console.log(
-                "❌ Salon introuvable."
-            );
-
+            console.log("❌ Salon introuvable.");
             return;
         }
 
         const embeds = [];
 
+        // Traiter les comptes un par un
         for (const account of config.robloxAccounts) {
-            const embed = await createAccountEmbed(
-                account
-            );
+            const embed = await createAccountEmbed(account);
 
             embeds.push(embed);
 
-            // Pause entre les comptes
+            // Pause avant le compte suivant
             await sleep(2000);
         }
 
         // Ajouter les prix
-        embeds.push(
-            createPricesEmbed()
-        );
+        embeds.push(createPricesEmbed());
 
         const content =
             "# 🛒 Selling ACC\n\n" +
@@ -466,7 +400,7 @@ async function updateSellingMessage() {
             limit: 50
         });
 
-        const message = messages.find(
+        let message = messages.find(
             msg =>
                 msg.author.id === client.user.id &&
                 msg.content.includes("Selling ACC")
@@ -502,35 +436,34 @@ async function updateSellingMessage() {
 }
 
 // ─────────────────────────────────────────────
-// 🤖 Bot prêt
+// 🤖 Démarrage du bot
 // ─────────────────────────────────────────────
 
 client.once("ready", async () => {
     console.log(
-        `✅ LoricBot connecté en tant que ${client.user.tag}`
+        `✅ LoricBot connecté en tant: ${client.user.tag}`
     );
 
     try {
         // Première mise à jour
         await updateSellingMessage();
 
-        // Toutes les 2 minutes
-        setInterval(
-            async () => {
-                try {
-                    await updateSellingMessage();
-                } catch (error) {
-                    console.error(
-                        "❌ Erreur update :",
-                        error
-                    );
-                }
-            },
-            2 * 60 * 1000
-        );
+        // 🔄 Mise à jour toutes les 2 minutes
+        setInterval(async () => {
+            try {
+                await updateSellingMessage();
+
+            } catch (error) {
+                console.error(
+                    "❌ Erreur pendant la mise à jour :",
+                    error
+                );
+            }
+
+        }, 2 * 60 * 1000);
 
         console.log(
-            "🔄 Mise à jour toutes les 2 minutes activée !"
+            "🔄 Mise à jour Selling ACC toutes les 2 minutes activée !"
         );
 
     } catch (error) {
@@ -546,4 +479,3 @@ client.once("ready", async () => {
 // ─────────────────────────────────────────────
 
 client.login(config.token);
-```
