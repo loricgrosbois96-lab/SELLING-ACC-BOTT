@@ -1,4 +1,3 @@
-```js
 const {
     Client,
     GatewayIntentBits,
@@ -18,13 +17,15 @@ const client = new Client({
 function maskLastTwo(value) {
     const text = String(value);
 
-    if (text.length <= 2) return "**";
+    if (text.length <= 2) {
+        return "**";
+    }
 
     return text.slice(0, -2) + "**";
 }
 
 // ─────────────────────────────────────────────
-// ⏱️ Petite pause
+// ⏱️ Pause
 // ─────────────────────────────────────────────
 
 function sleep(ms) {
@@ -32,7 +33,7 @@ function sleep(ms) {
 }
 
 // ─────────────────────────────────────────────
-// 💾 Dernières statistiques connues
+// 💾 Cache des statistiques
 // ─────────────────────────────────────────────
 
 const cachedStats = new Map();
@@ -73,7 +74,7 @@ async function getRobloxUser(username) {
 }
 
 // ─────────────────────────────────────────────
-// 📊 Requête sécurisée pour une statistique
+// 📊 Récupérer un compteur Roblox
 // ─────────────────────────────────────────────
 
 async function fetchRobloxCount(
@@ -106,14 +107,12 @@ async function fetchRobloxCount(
                 console.log(
                     `⚠️ ${label} ${userId} : réponse invalide`
                 );
-
             } else {
                 console.log(
                     `⚠️ ${label} ${userId} : HTTP ${response.status} ` +
                     `(tentative ${attempt}/${maxAttempts})`
                 );
             }
-
         } catch (error) {
             console.log(
                 `⚠️ ${label} ${userId} : erreur réseau ` +
@@ -121,19 +120,20 @@ async function fetchRobloxCount(
             );
         }
 
-        // Attendre avant de réessayer
         if (attempt < maxAttempts) {
             await sleep(2000 * attempt);
         }
     }
 
-    // IMPORTANT :
-    // On garde l'ancienne valeur au lieu de mettre 0.
+    console.log(
+        `⚠️ ${label} ${userId} : utilisation de l'ancienne valeur`
+    );
+
     return oldValue;
 }
 
 // ─────────────────────────────────────────────
-// 📊 Récupérer les statistiques Roblox
+// 📊 Statistiques Roblox
 // ─────────────────────────────────────────────
 
 async function getRobloxStats(userId) {
@@ -151,10 +151,7 @@ async function getRobloxStats(userId) {
         following: oldStats.following
     };
 
-    // ─────────────────────────────────────────
     // 👥 Amis
-    // ─────────────────────────────────────────
-
     stats.friends = await fetchRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/friends/count`,
         "Friends",
@@ -164,10 +161,7 @@ async function getRobloxStats(userId) {
 
     await sleep(2000);
 
-    // ─────────────────────────────────────────
     // 👤 Followers
-    // ─────────────────────────────────────────
-
     stats.followers = await fetchRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/followers/count`,
         "Followers",
@@ -177,10 +171,7 @@ async function getRobloxStats(userId) {
 
     await sleep(2000);
 
-    // ─────────────────────────────────────────
     // ➡️ Following
-    // ─────────────────────────────────────────
-
     stats.following = await fetchRobloxCount(
         `https://friends.roblox.com/v1/users/${userId}/followings/count`,
         "Following",
@@ -188,10 +179,7 @@ async function getRobloxStats(userId) {
         oldStats.following
     );
 
-    // ─────────────────────────────────────────
-    // Si aucune valeur n'a jamais été récupérée
-    // ─────────────────────────────────────────
-
+    // Ne jamais inventer 0 si Roblox n'a rien répondu.
     if (stats.friends === null) {
         stats.friends = "--";
     }
@@ -204,14 +192,14 @@ async function getRobloxStats(userId) {
         stats.following = "--";
     }
 
-    // Sauvegarder les dernières valeurs connues
+    // Sauvegarde
     cachedStats.set(key, stats);
 
     return stats;
 }
 
 // ─────────────────────────────────────────────
-// 🖼️ Récupérer l'avatar Roblox
+// 🖼️ Avatar Roblox
 // ─────────────────────────────────────────────
 
 async function getAvatar(userId) {
@@ -247,6 +235,18 @@ async function getAvatar(userId) {
 }
 
 // ─────────────────────────────────────────────
+// 🔢 Formater une statistique
+// ─────────────────────────────────────────────
+
+function formatStat(value) {
+    if (typeof value === "number") {
+        return value.toLocaleString("fr-FR");
+    }
+
+    return value;
+}
+
+// ─────────────────────────────────────────────
 // 🎮 Créer l'embed d'un compte
 // ─────────────────────────────────────────────
 
@@ -271,7 +271,6 @@ async function createAccountEmbed(account) {
 
         const stats = await getRobloxStats(user.id);
 
-        // Petite pause avant l'avatar
         await sleep(1000);
 
         const avatar = await getAvatar(user.id);
@@ -290,26 +289,17 @@ async function createAccountEmbed(account) {
                 },
                 {
                     name: "👥 Amis",
-                    value:
-                        typeof stats.friends === "number"
-                            ? `**${stats.friends.toLocaleString("fr-FR")}**`
-                            : `**${stats.friends}**`,
+                    value: `**${formatStat(stats.friends)}**`,
                     inline: true
                 },
                 {
                     name: "👤 Followers",
-                    value:
-                        typeof stats.followers === "number"
-                            ? `**${stats.followers.toLocaleString("fr-FR")}**`
-                            : `**${stats.followers}**`,
+                    value: `**${formatStat(stats.followers)}**`,
                     inline: true
                 },
                 {
                     name: "➡️ Following",
-                    value:
-                        typeof stats.following === "number"
-                            ? `**${stats.following.toLocaleString("fr-FR")}**`
-                            : `**${stats.following}**`,
+                    value: `**${formatStat(stats.following)}**`,
                     inline: true
                 }
             )
@@ -405,7 +395,7 @@ function createPricesEmbed() {
 }
 
 // ─────────────────────────────────────────────
-// 🛒 Mettre à jour le salon Selling ACC
+// 🛒 Mettre à jour Selling ACC
 // ─────────────────────────────────────────────
 
 async function updateSellingMessage() {
@@ -421,25 +411,20 @@ async function updateSellingMessage() {
 
         const embeds = [];
 
-        // Traiter les comptes un par un
         for (const account of config.robloxAccounts) {
-            console.log(
-                `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-            );
-
-            console.log(
-                `🎮 Compte : ${account.username}`
-            );
+            console.log("");
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            console.log(`🎮 Compte : ${account.username}`);
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             const embed = await createAccountEmbed(account);
 
             embeds.push(embed);
 
-            // Pause entre les comptes
             await sleep(2000);
         }
 
-        // Ajouter les prix
+        // Ajouter l'embed des prix
         embeds.push(createPricesEmbed());
 
         const content =
@@ -469,7 +454,6 @@ async function updateSellingMessage() {
             console.log(
                 "✅ Message Roblox mis à jour !"
             );
-
         } else {
             await channel.send({
                 content,
@@ -502,21 +486,16 @@ client.once("ready", async () => {
         // Première mise à jour
         await updateSellingMessage();
 
-        // ─────────────────────────────────────────
-        // 🔄 Mise à jour toutes les 2 minutes
-        // ─────────────────────────────────────────
-
+        // Mise à jour toutes les 2 minutes
         setInterval(async () => {
             try {
                 await updateSellingMessage();
-
             } catch (error) {
                 console.error(
                     "❌ Erreur pendant la mise à jour :",
                     error
                 );
             }
-
         }, 2 * 60 * 1000);
 
         console.log(
@@ -537,7 +516,3 @@ client.once("ready", async () => {
 
 client.login(config.token);
 ```
-
-Avec cette version, si Roblox renvoie `429`, `500`, une erreur réseau, etc., le bot **ne mettra plus automatiquement les followers à `0`**. Il conservera la dernière valeur connue ou affichera `--` s'il n'en a jamais obtenu.
-
-Tu peux remplacer directement ton ancien `index.js` par celui-ci.
