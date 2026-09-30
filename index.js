@@ -36,6 +36,9 @@ function sleep(ms) {
 
 const cachedStats = new Map();
 
+// Empêche deux mises à jour de fonctionner en même temps
+let updateInProgress = false;
+
 // ─────────────────────────────────────────────
 // 🔎 Rechercher un utilisateur Roblox
 // ─────────────────────────────────────────────
@@ -84,12 +87,8 @@ async function getRobloxStats(userId) {
         following: null
     };
 
-    // ─────────────────────────────────────────
-    // 🔢 Fonction pour récupérer un nombre Roblox
-    // ─────────────────────────────────────────
-
     async function getRobloxCount(url, label, oldValue) {
-        const maxAttempts = 3;
+        const maxAttempts = 4;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -114,28 +113,46 @@ async function getRobloxStats(userId) {
                         `⚠️ ${label} ${userId} : réponse Roblox invalide`
                     );
 
+                } else if (response.status === 429) {
+                    console.log(
+                        `⚠️ ${label} ${userId} : HTTP 429 ` +
+                        `(tentative ${attempt}/${maxAttempts})`
+                    );
+
+                    // Attente progressive en cas de rate limit
+                    if (attempt < maxAttempts) {
+                        const waitTime = 5000 * attempt;
+
+                        console.log(
+                            `⏳ Attente de ${waitTime / 1000}s avant nouvelle tentative...`
+                        );
+
+                        await sleep(waitTime);
+                    }
+
+                    continue;
+
                 } else {
                     console.log(
                         `⚠️ ${label} ${userId} : HTTP ${response.status} ` +
-                        `(${attempt}/${maxAttempts})`
+                        `(tentative ${attempt}/${maxAttempts})`
                     );
                 }
 
             } catch (error) {
                 console.log(
                     `⚠️ ${label} ${userId} : erreur réseau ` +
-                    `(${attempt}/${maxAttempts})`
+                    `(tentative ${attempt}/${maxAttempts})`
                 );
             }
 
-            // Attendre avant de réessayer
             if (attempt < maxAttempts) {
-                await sleep(3000);
+                await sleep(4000);
             }
         }
 
-        // Si Roblox n'a pas répondu correctement,
-        // on conserve l'ancienne valeur si elle existe.
+        // Si Roblox refuse toutes les requêtes,
+        // on conserve la dernière valeur connue.
         if (oldValue !== null && oldValue !== undefined) {
             console.log(
                 `💾 ${label} ${userId} : ancienne valeur conservée (${oldValue})`
@@ -144,7 +161,7 @@ async function getRobloxStats(userId) {
             return oldValue;
         }
 
-        // Ne jamais inventer un 0 lorsqu'on n'a aucune donnée.
+        // Aucune donnée disponible.
         return 0;
     }
 
@@ -155,7 +172,7 @@ async function getRobloxStats(userId) {
         oldStats.friends
     );
 
-    await sleep(2000);
+    await sleep(4000);
 
     // 👤 Followers
     const followers = await getRobloxCount(
@@ -164,7 +181,7 @@ async function getRobloxStats(userId) {
         oldStats.followers
     );
 
-    await sleep(2000);
+    await sleep(4000);
 
     // ➡️ Following
     const following = await getRobloxCount(
@@ -179,7 +196,6 @@ async function getRobloxStats(userId) {
         following
     };
 
-    // Sauvegarder les dernières valeurs connues
     cachedStats.set(key, stats);
 
     console.log(
@@ -234,8 +250,7 @@ async function createAccountEmbed(account) {
 
         const stats = await getRobloxStats(user.id);
 
-        // Petite pause avant de passer au compte suivant
-        await sleep(2000);
+        await sleep(3000);
 
         const avatar = await getAvatar(user.id);
 
@@ -363,6 +378,18 @@ function createPricesEmbed() {
 // ─────────────────────────────────────────────
 
 async function updateSellingMessage() {
+
+    // Empêcher deux mises à jour simultanées
+    if (updateInProgress) {
+        console.log(
+            "⏳ Une mise à jour est déjà en cours, nouvelle mise à jour ignorée."
+        );
+
+        return;
+    }
+
+    updateInProgress = true;
+
     try {
         const channel = await client.channels.fetch(
             config.sellingChannelId
@@ -381,8 +408,8 @@ async function updateSellingMessage() {
 
             embeds.push(embed);
 
-            // Pause avant le compte suivant
-            await sleep(2000);
+            // Pause importante avant le compte suivant
+            await sleep(5000);
         }
 
         // Ajouter les prix
@@ -400,7 +427,7 @@ async function updateSellingMessage() {
             limit: 50
         });
 
-        let message = messages.find(
+        const message = messages.find(
             msg =>
                 msg.author.id === client.user.id &&
                 msg.content.includes("Selling ACC")
@@ -432,6 +459,9 @@ async function updateSellingMessage() {
             "❌ Erreur pendant la mise à jour :",
             error
         );
+
+    } finally {
+        updateInProgress = false;
     }
 }
 
@@ -439,7 +469,7 @@ async function updateSellingMessage() {
 // 🤖 Démarrage du bot
 // ─────────────────────────────────────────────
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
     console.log(
         `✅ LoricBot connecté en tant: ${client.user.tag}`
     );
