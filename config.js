@@ -8,7 +8,7 @@ module.exports = {
     // 🎫 Tickets
     ticketChannelId: "1554818771473145957",
 
-    // 🎮 Selling ACC
+    // 🛒 Selling ACC / Roblox
     sellingChannelId: "1554814457526493254",
 
     // 📜 Règlement
