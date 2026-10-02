@@ -14,8 +14,7 @@ const config = require("./config");
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMessages
     ]
 });
 
@@ -29,8 +28,8 @@ const cachedAvatars = new Map();
 
 let updateInProgress = false;
 
-const ROBLOX_UPDATE_INTERVAL = 10 * 60 * 1000;
-const ROBLOX_CACHE_TIME = 10 * 60 * 1000;
+const ROBLOX_UPDATE_INTERVAL = 5 * 60 * 1000;
+const ROBLOX_CACHE_TIME = 5 * 60 * 1000;
 
 const robloxCooldown = new Map();
 
@@ -174,6 +173,7 @@ async function getRobloxUser(username) {
     }
 
     try {
+
         const response = await fetch(
             "https://users.roblox.com/v1/usernames/users",
             {
@@ -237,7 +237,6 @@ async function getRobloxStats(userId) {
 
     const cached = cachedStats.get(userId);
 
-    // Cache encore valide
     if (
         cached &&
         Date.now() - cached.time < ROBLOX_CACHE_TIME
@@ -245,7 +244,6 @@ async function getRobloxStats(userId) {
         return cached.stats;
     }
 
-    // Cooldown RATE_LIMIT
     const cooldown = robloxCooldown.get(userId);
 
     if (
@@ -299,8 +297,7 @@ async function getRobloxStats(userId) {
                 );
 
                 console.log(
-                    `⚠️ RATE_LIMIT Roblox ${userId} ` +
-                    `→ cache conservé`
+                    `⚠️ RATE_LIMIT Roblox ${userId} → cache conservé`
                 );
 
                 return cached?.stats || null;
@@ -432,6 +429,7 @@ async function getAccountData(account) {
         ...account,
         userId: user.id,
         displayName: user.displayName,
+        username: user.name || account.username,
         stats,
         avatar
     };
@@ -439,7 +437,7 @@ async function getAccountData(account) {
 
 
 // ======================================================
-// 🎮 EMBED EXACTEMENT STYLE CAPTURE
+// 🎮 EMBED ROBLOX
 // ======================================================
 
 function createAccountEmbed(account) {
@@ -454,12 +452,6 @@ function createAccountEmbed(account) {
     const friends =
         stats.friends ?? 0;
 
-    const followers =
-        stats.followers ?? 0;
-
-    const following =
-        stats.following ?? 0;
-
     const embed =
         new EmbedBuilder()
             .setTitle(`🎮 ${account.name}`)
@@ -469,15 +461,10 @@ function createAccountEmbed(account) {
                 `🏷️ @${account.username}\n\n` +
 
                 `🆔 **ID Roblox**    ` +
-                `👥 **Amis**    ` +
-                `👤 **Followers**\n` +
+                `👥 **Amis**\n` +
 
                 `\`${account.userId || "Inconnu"}\`    ` +
-                `**${friends}**    ` +
-                `**${followers}**\n\n` +
-
-                `➡️ **Following**\n` +
-                `**${following}**`
+                `**${friends}**`
             )
 
             .setColor(0x5865F2)
@@ -497,7 +484,7 @@ function createAccountEmbed(account) {
 
 
 // ======================================================
-// 🔎 EMBED ROBLOX
+// 🔎 IDENTIFICATION EMBED ROBLOX
 // ======================================================
 
 function isRobloxMessage(message) {
@@ -547,10 +534,6 @@ async function updateSellingMessage() {
 
         const accounts = [];
 
-        // ==================================================
-        // CACHE + PAUSE ENTRE LES COMPTES
-        // ==================================================
-
         for (
             const account of config.robloxAccounts
         ) {
@@ -560,26 +543,18 @@ async function updateSellingMessage() {
 
             accounts.push(data);
 
-            // Petite pause pour Roblox
+            // Petite pause entre les comptes
             await new Promise(
                 resolve =>
                     setTimeout(resolve, 2000)
             );
         }
 
-        // ==================================================
-        // EMBEDS
-        // ==================================================
-
         const embeds =
             accounts.map(
                 account =>
                     createAccountEmbed(account)
             );
-
-        // ==================================================
-        // MESSAGES EXISTANTS
-        // ==================================================
 
         const messages =
             await channel.messages.fetch({
@@ -594,10 +569,6 @@ async function updateSellingMessage() {
                         a.createdTimestamp -
                         b.createdTimestamp
                 );
-
-        // ==================================================
-        // MODIFIER / CRÉER
-        // ==================================================
 
         for (
             let i = 0;
@@ -623,10 +594,6 @@ async function updateSellingMessage() {
                     setTimeout(resolve, 500)
             );
         }
-
-        // ==================================================
-        // SUPPRIMER LES EMBEDS EN TROP
-        // ==================================================
 
         if (
             oldMessages.length >
@@ -679,8 +646,10 @@ client.once(
 
         await sendRulesPanel();
 
+        // Première mise à jour immédiatement
         await updateSellingMessage();
 
+        // Puis toutes les 5 minutes
         setInterval(
             async () => {
                 await updateSellingMessage();
