@@ -1,6 +1,7 @@
 module.exports = {
     token: process.env.DISCORD_TOKEN,
 
+    // 🤖 Discord
     clientId: "1554823119762362388",
     guildId: "1554802553982558218",
     ownerId: "1269318521448431735",
@@ -36,6 +37,10 @@ module.exports = {
         {
             name: "My account",
             username: "loric_grbs"
+        },
+        {
+            name: "Yukixmerra",
+            username: "yukixmerra"
         }
     ]
 };
