@@ -20,16 +20,18 @@ const client = new Client({
 });
 
 // ======================================================
-// VARIABLES
+// VARIABLES / CACHE
 // ======================================================
 
 const cachedStats = new Map();
+const cachedUsers = new Map();
+const cachedAvatars = new Map();
+
 let updateInProgress = false;
 
-// Mise à jour toutes les 10 minutes
 const ROBLOX_UPDATE_INTERVAL = 10 * 60 * 1000;
+const ROBLOX_CACHE_TIME = 10 * 60 * 1000;
 
-// Cooldown après un RATE_LIMIT Roblox
 const robloxCooldown = new Map();
 
 
@@ -76,10 +78,7 @@ async function sendTicketPanel() {
         console.log("✅ Panel tickets envoyé.");
 
     } catch (error) {
-        console.error(
-            "❌ Erreur panel tickets :",
-            error
-        );
+        console.error("❌ Erreur panel tickets :", error);
     }
 }
 
@@ -154,19 +153,26 @@ async function sendRulesPanel() {
         console.log("✅ Panel règlement envoyé.");
 
     } catch (error) {
-        console.error(
-            "❌ Erreur panel règlement :",
-            error
-        );
+        console.error("❌ Erreur panel règlement :", error);
     }
 }
 
 
 // ======================================================
-// 🎮 ROBLOX - RECHERCHE UTILISATEUR
+// 🎮 ROBLOX - UTILISATEUR
 // ======================================================
 
 async function getRobloxUser(username) {
+
+    const cached = cachedUsers.get(username);
+
+    if (
+        cached &&
+        Date.now() - cached.time < ROBLOX_CACHE_TIME
+    ) {
+        return cached.user;
+    }
+
     try {
         const response = await fetch(
             "https://users.roblox.com/v1/usernames/users",
@@ -184,53 +190,73 @@ async function getRobloxUser(username) {
 
         if (response.status === 429) {
             console.log(
-                `⚠️ Roblox limite la recherche de ${username}.`
+                `⚠️ Roblox RATE_LIMIT pour ${username}`
             );
 
-            return null;
+            return cached?.user || null;
         }
 
         if (!response.ok) {
             throw new Error(
-                `Roblox HTTP ${response.status}`
+                `HTTP ${response.status}`
             );
         }
 
         const data = await response.json();
 
-        if (!data.data || !data.data.length) {
+        if (!data.data?.length) {
             return null;
         }
 
-        return data.data[0];
+        const user = data.data[0];
+
+        cachedUsers.set(username, {
+            user,
+            time: Date.now()
+        });
+
+        return user;
 
     } catch (error) {
+
         console.error(
             `❌ Erreur utilisateur Roblox ${username}:`,
-            error
+            error.message
         );
 
-        return null;
+        return cached?.user || null;
     }
 }
 
 
 // ======================================================
-// 📊 ROBLOX - STATS
+// 📊 ROBLOX - STATS AVEC CACHE
 // ======================================================
 
 async function getRobloxStats(userId) {
 
-    // Vérifie si ce compte est actuellement en cooldown
-    const cooldownUntil = robloxCooldown.get(userId);
+    const cached = cachedStats.get(userId);
 
-    if (cooldownUntil && Date.now() < cooldownUntil) {
+    // Cache encore valide
+    if (
+        cached &&
+        Date.now() - cached.time < ROBLOX_CACHE_TIME
+    ) {
+        return cached.stats;
+    }
 
+    // Cooldown RATE_LIMIT
+    const cooldown = robloxCooldown.get(userId);
+
+    if (
+        cooldown &&
+        Date.now() < cooldown
+    ) {
         console.log(
-            `⏳ Cooldown Roblox pour ${userId}, utilisation du cache.`
+            `⏳ Cache utilisé pour Roblox ${userId}`
         );
 
-        return cachedStats.get(userId) || null;
+        return cached?.stats || null;
     }
 
     const endpoints = {
@@ -244,50 +270,40 @@ async function getRobloxStats(userId) {
             `https://friends.roblox.com/v1/users/${userId}/followings/count`
     };
 
-    const results = {};
-
     try {
+
+        const results = {};
 
         for (const [key, url] of Object.entries(endpoints)) {
 
             const response = await fetch(url);
 
-            // ==================================================
-            // 🔴 RATE LIMIT
-            // ==================================================
-
             if (response.status === 429) {
 
                 const retryAfter =
-                    response.headers.get("retry-after");
+                    Number(
+                        response.headers.get("retry-after")
+                    );
 
-                let cooldown = 10 * 60 * 1000;
-
-                if (retryAfter) {
-
-                    const seconds = Number(retryAfter);
-
-                    if (!Number.isNaN(seconds)) {
-
-                        cooldown = Math.max(
-                            seconds * 1000,
-                            30 * 1000
-                        );
-                    }
-                }
+                const wait =
+                    Number.isFinite(retryAfter)
+                        ? Math.max(
+                            retryAfter * 1000,
+                            30000
+                        )
+                        : 10 * 60 * 1000;
 
                 robloxCooldown.set(
                     userId,
-                    Date.now() + cooldown
+                    Date.now() + wait
                 );
 
                 console.log(
-                    `⚠️ Roblox RATE_LIMIT pour ${userId}. ` +
-                    `Pause ${Math.ceil(cooldown / 1000)} secondes.`
+                    `⚠️ RATE_LIMIT Roblox ${userId} ` +
+                    `→ cache conservé`
                 );
 
-                // On garde les anciennes stats
-                return cachedStats.get(userId) || null;
+                return cached?.stats || null;
             }
 
             if (!response.ok) {
@@ -296,7 +312,8 @@ async function getRobloxStats(userId) {
                 );
             }
 
-            results[key] = await response.json();
+            results[key] =
+                await response.json();
         }
 
         const stats = {
@@ -305,10 +322,11 @@ async function getRobloxStats(userId) {
             following: results.following.count
         };
 
-        // Sauvegarde du cache
-        cachedStats.set(userId, stats);
+        cachedStats.set(userId, {
+            stats,
+            time: Date.now()
+        });
 
-        // Requête réussie
         robloxCooldown.delete(userId);
 
         return stats;
@@ -316,20 +334,31 @@ async function getRobloxStats(userId) {
     } catch (error) {
 
         console.error(
-            `❌ Erreur stats Roblox ${userId}:`,
+            `❌ Stats Roblox ${userId}:`,
             error.message
         );
 
-        return cachedStats.get(userId) || null;
+        return cached?.stats || null;
     }
 }
 
 
 // ======================================================
-// 🖼️ ROBLOX - AVATAR
+// 🖼️ ROBLOX - AVATAR AVEC CACHE
 // ======================================================
 
 async function getRobloxAvatar(userId) {
+
+    const cached =
+        cachedAvatars.get(userId);
+
+    if (
+        cached &&
+        Date.now() - cached.time < ROBLOX_CACHE_TIME
+    ) {
+        return cached.avatar;
+    }
+
     try {
 
         const url =
@@ -339,37 +368,48 @@ async function getRobloxAvatar(userId) {
             `&format=Png` +
             `&isCircular=false`;
 
-        const response = await fetch(url);
+        const response =
+            await fetch(url);
 
         if (!response.ok) {
-            return null;
+            return cached?.avatar || null;
         }
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
-        return data.data?.[0]?.imageUrl || null;
+        const avatar =
+            data.data?.[0]?.imageUrl || null;
+
+        if (avatar) {
+            cachedAvatars.set(userId, {
+                avatar,
+                time: Date.now()
+            });
+        }
+
+        return avatar;
 
     } catch (error) {
 
         console.error(
             "❌ Erreur avatar Roblox :",
-            error
+            error.message
         );
 
-        return null;
+        return cached?.avatar || null;
     }
 }
 
 
 // ======================================================
-// 📦 DONNÉES D'UN COMPTE
+// 📦 COMPTE COMPLET
 // ======================================================
 
 async function getAccountData(account) {
 
-    const user = await getRobloxUser(
-        account.username
-    );
+    const user =
+        await getRobloxUser(account.username);
 
     if (!user) {
 
@@ -392,46 +432,14 @@ async function getAccountData(account) {
         ...account,
         userId: user.id,
         displayName: user.displayName,
-        stats:
-            stats ||
-            cachedStats.get(user.id) ||
-            null,
+        stats,
         avatar
     };
 }
 
 
 // ======================================================
-// 💰 PRIX
-// ======================================================
-
-function getPrice(name) {
-
-    switch (name) {
-
-        case "5K acc":
-            return "5€";
-
-        case "2K acc":
-            return "3€";
-
-        case "1K acc":
-            return "2€";
-
-        case "500 acc":
-            return "1€";
-
-        case "My account":
-            return "Sur demande";
-
-        default:
-            return "N/A";
-    }
-}
-
-
-// ======================================================
-// 🎮 EMBED = 1 COMPTE
+// 🎮 EMBED EXACTEMENT STYLE CAPTURE
 // ======================================================
 
 function createAccountEmbed(account) {
@@ -440,47 +448,45 @@ function createAccountEmbed(account) {
         account.displayName ||
         account.username;
 
-    const stats = account.stats;
+    const stats =
+        account.stats || {};
 
     const friends =
-        stats?.friends ?? "?";
+        stats.friends ?? 0;
 
     const followers =
-        stats?.followers ?? "?";
+        stats.followers ?? 0;
 
     const following =
-        stats?.following ?? "?";
+        stats.following ?? 0;
 
-    const price =
-        getPrice(account.name);
+    const embed =
+        new EmbedBuilder()
+            .setTitle(`🎮 ${account.name}`)
 
-    const embed = new EmbedBuilder()
-        .setTitle(`🎮 ${account.name}`)
-        .setColor(0x5865F2)
+            .setDescription(
+                `👤 **${displayName}**\n` +
+                `🏷️ @${account.username}\n\n` +
 
-        .setDescription(
-            `👤 **${displayName}**\n` +
-            `🏷️ @${account.username}\n\n` +
+                `🆔 **ID Roblox**    ` +
+                `👥 **Amis**    ` +
+                `👤 **Followers**\n` +
 
-            `🆔 **ID Roblox**    ` +
-            `👥 **Amis**    ` +
-            `👤 **Followers**\n` +
+                `\`${account.userId || "Inconnu"}\`    ` +
+                `**${friends}**    ` +
+                `**${followers}**\n\n` +
 
-            `\`${account.userId || "Inconnu"}\`    ` +
-            `**${friends}**    ` +
-            `**${followers}**\n\n` +
+                `➡️ **Following**\n` +
+                `**${following}**`
+            )
 
-            `➡️ **Following**\n` +
-            `**${following}**\n\n` +
+            .setColor(0x5865F2)
 
-            `💰 **Prix :** ${price}`
-        )
+            .setFooter({
+                text: "LoricBot • Informations Roblox"
+            })
 
-        .setFooter({
-            text: "LoricBot • Informations Roblox"
-        })
-
-        .setTimestamp();
+            .setTimestamp();
 
     if (account.avatar) {
         embed.setThumbnail(account.avatar);
@@ -491,28 +497,26 @@ function createAccountEmbed(account) {
 
 
 // ======================================================
-// 🔎 RECHERCHE DES ANCIENS EMBEDS
+// 🔎 EMBED ROBLOX
 // ======================================================
 
-function isRobloxEmbed(message) {
+function isRobloxMessage(message) {
+
+    if (message.author.id !== client.user.id) {
+        return false;
+    }
 
     if (!message.embeds.length) {
         return false;
     }
 
-    const embed = message.embeds[0];
-
-    const title =
-        embed.title || "";
-
-    const footer =
-        embed.footer?.text || "";
+    const embed =
+        message.embeds[0];
 
     return (
-        title.startsWith("🎮 ") &&
-        (
-            footer.includes("LoricBot") ||
-            title === "🎮 Comptes Roblox disponibles"
+        embed.title?.startsWith("🎮 ") &&
+        embed.footer?.text?.includes(
+            "LoricBot • Informations Roblox"
         )
     );
 }
@@ -525,11 +529,6 @@ function isRobloxEmbed(message) {
 async function updateSellingMessage() {
 
     if (updateInProgress) {
-
-        console.log(
-            "⏳ Mise à jour Roblox déjà en cours."
-        );
-
         return;
     }
 
@@ -543,27 +542,28 @@ async function updateSellingMessage() {
             );
 
         if (!channel) {
-
-            console.log(
-                "❌ Salon selling introuvable."
-            );
-
             return;
         }
 
         const accounts = [];
 
-        // Récupération compte par compte
-        for (const account of config.robloxAccounts) {
+        // ==================================================
+        // CACHE + PAUSE ENTRE LES COMPTES
+        // ==================================================
+
+        for (
+            const account of config.robloxAccounts
+        ) {
 
             const data =
                 await getAccountData(account);
 
             accounts.push(data);
 
-            // Petite pause entre les comptes
-            await new Promise(resolve =>
-                setTimeout(resolve, 1500)
+            // Petite pause pour Roblox
+            await new Promise(
+                resolve =>
+                    setTimeout(resolve, 2000)
             );
         }
 
@@ -572,8 +572,9 @@ async function updateSellingMessage() {
         // ==================================================
 
         const embeds =
-            accounts.map(account =>
-                createAccountEmbed(account)
+            accounts.map(
+                account =>
+                    createAccountEmbed(account)
             );
 
         // ==================================================
@@ -585,12 +586,9 @@ async function updateSellingMessage() {
                 limit: 100
             });
 
-        let existingMessages =
+        const oldMessages =
             messages
-                .filter(message =>
-                    message.author.id === client.user.id &&
-                    isRobloxEmbed(message)
-                )
+                .filter(isRobloxMessage)
                 .sort(
                     (a, b) =>
                         a.createdTimestamp -
@@ -598,53 +596,18 @@ async function updateSellingMessage() {
                 );
 
         // ==================================================
-        // SUPPRESSION DE L'ANCIEN GROS EMBED
+        // MODIFIER / CRÉER
         // ==================================================
 
-        const oldMessage =
-            messages.find(message =>
-                message.author.id === client.user.id &&
-                message.embeds.length > 0 &&
-                message.embeds[0].title ===
-                    "🎮 Comptes Roblox disponibles"
-            );
+        for (
+            let i = 0;
+            i < embeds.length;
+            i++
+        ) {
 
-        if (oldMessage) {
+            if (oldMessages[i]) {
 
-            try {
-
-                await oldMessage.delete();
-
-                console.log(
-                    "🗑️ Ancien embed Roblox supprimé."
-                );
-
-            } catch (error) {
-
-                console.log(
-                    "⚠️ Impossible de supprimer l'ancien embed."
-                );
-            }
-
-            existingMessages =
-                existingMessages.filter(
-                    message =>
-                        message.id !== oldMessage.id
-                );
-        }
-
-        // ==================================================
-        // MISE À JOUR / CRÉATION
-        // ==================================================
-
-        for (let i = 0; i < embeds.length; i++) {
-
-            const existing =
-                existingMessages[i];
-
-            if (existing) {
-
-                await existing.edit({
+                await oldMessages[i].edit({
                     embeds: [embeds[i]]
                 });
 
@@ -655,45 +618,41 @@ async function updateSellingMessage() {
                 });
             }
 
-            // Petite pause Discord
-            await new Promise(resolve =>
-                setTimeout(resolve, 500)
+            await new Promise(
+                resolve =>
+                    setTimeout(resolve, 500)
             );
         }
 
         // ==================================================
-        // SUPPRIME LES EMBEDS EN TROP
+        // SUPPRIMER LES EMBEDS EN TROP
         // ==================================================
 
-        if (existingMessages.length > embeds.length) {
+        if (
+            oldMessages.length >
+            embeds.length
+        ) {
 
             for (
                 let i = embeds.length;
-                i < existingMessages.length;
+                i < oldMessages.length;
                 i++
             ) {
 
                 try {
-
-                    await existingMessages[i].delete();
-
-                } catch (error) {
-
-                    console.log(
-                        "⚠️ Impossible de supprimer un ancien embed."
-                    );
-                }
+                    await oldMessages[i].delete();
+                } catch {}
             }
         }
 
         console.log(
-            "🔄 Comptes Roblox mis à jour."
+            "🔄 Interface Roblox mise à jour."
         );
 
     } catch (error) {
 
         console.error(
-            "❌ Erreur update Roblox :",
+            "❌ Erreur interface Roblox :",
             error
         );
 
@@ -708,25 +667,28 @@ async function updateSellingMessage() {
 // 🟢 BOT READY
 // ======================================================
 
-client.once("clientReady", async () => {
+client.once(
+    "clientReady",
+    async () => {
 
-    console.log(
-        `✅ Connecté en tant ${client.user.tag}`
-    );
+        console.log(
+            `✅ Connecté en tant que ${client.user.tag}`
+        );
 
-    await sendTicketPanel();
+        await sendTicketPanel();
 
-    await sendRulesPanel();
-
-    await updateSellingMessage();
-
-    // Mise à jour toutes les 10 minutes
-    setInterval(async () => {
+        await sendRulesPanel();
 
         await updateSellingMessage();
 
-    }, ROBLOX_UPDATE_INTERVAL);
-});
+        setInterval(
+            async () => {
+                await updateSellingMessage();
+            },
+            ROBLOX_UPDATE_INTERVAL
+        );
+    }
+);
 
 
 // ======================================================
@@ -743,7 +705,7 @@ client.on(
 
 
         // ==================================================
-        // 🎫 CRÉATION TICKET
+        // 🎫 TICKET
         // ==================================================
 
         if (
@@ -760,20 +722,18 @@ client.on(
                     return;
                 }
 
-                const existingChannel =
+                const existing =
                     guild.channels.cache.find(
                         channel =>
                             channel.name ===
                             `ticket-${interaction.user.username.toLowerCase()}`
                     );
 
-                if (existingChannel) {
+                if (existing) {
 
                     await interaction.reply({
-
                         content:
-                            `❌ Tu as déjà un ticket ouvert : ${existingChannel}`,
-
+                            `❌ Tu as déjà un ticket ouvert : ${existing}`,
                         flags:
                             MessageFlags.Ephemeral
                     });
@@ -815,32 +775,23 @@ client.on(
 
                 const embed =
                     new EmbedBuilder()
-
                         .setTitle("🎫 Ticket")
-
                         .setDescription(
                             `Bonjour ${interaction.user} 👋\n\n` +
                             "Explique ton problème et un membre du staff viendra t'aider.\n\n" +
                             "Merci de ne pas spammer."
                         )
-
                         .setColor(0x5865F2);
 
                 await ticketChannel.send({
-
                     content:
                         `${interaction.user}`,
-
-                    embeds: [
-                        embed
-                    ]
+                    embeds: [embed]
                 });
 
                 await interaction.reply({
-
                     content:
                         `✅ Ton ticket a été créé : ${ticketChannel}`,
-
                     flags:
                         MessageFlags.Ephemeral
                 });
@@ -851,24 +802,12 @@ client.on(
                     "❌ Erreur création ticket :",
                     error
                 );
-
-                if (!interaction.replied) {
-
-                    await interaction.reply({
-
-                        content:
-                            "❌ Impossible de créer le ticket.",
-
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-                }
             }
         }
 
 
         // ==================================================
-        // 📜 ACCEPTATION RÈGLEMENT
+        // 📜 RÈGLEMENT
         // ==================================================
 
         if (
@@ -891,10 +830,8 @@ client.on(
                 if (!role) {
 
                     await interaction.reply({
-
                         content:
                             "❌ Le rôle `VerifiedMember` est introuvable.",
-
                         flags:
                             MessageFlags.Ephemeral
                     });
@@ -909,10 +846,8 @@ client.on(
                 ) {
 
                     await interaction.reply({
-
                         content:
                             "✅ Tu es déjà vérifié !",
-
                         flags:
                             MessageFlags.Ephemeral
                     });
@@ -923,11 +858,9 @@ client.on(
                 await member.roles.add(role);
 
                 await interaction.reply({
-
                     content:
                         "✅ **Règlement accepté !**\n" +
                         "Tu as reçu le rôle **VerifiedMember**. Bienvenue ! 🎉",
-
                     flags:
                         MessageFlags.Ephemeral
                 });
@@ -946,10 +879,8 @@ client.on(
                 if (!interaction.replied) {
 
                     await interaction.reply({
-
                         content:
-                            "❌ Impossible de te donner le rôle. Vérifie que le bot possède la permission **Gérer les rôles** et que son rôle est placé au-dessus de `VerifiedMember`.",
-
+                            "❌ Impossible de te donner le rôle. Vérifie que le bot possède la permission **Gérer les rôles** et que son rôle est au-dessus de `VerifiedMember`.",
                         flags:
                             MessageFlags.Ephemeral
                     });
