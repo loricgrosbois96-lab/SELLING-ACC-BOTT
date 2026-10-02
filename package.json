@@ -1,14 +1,12 @@
 {
   "name": "loricbot",
   "version": "1.0.0",
-  "description": "LoricBot",
+  "description": "LoricBot - tickets + Roblox",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.27.0",
-    "dotenv": "^18.0.4",
-    "node-fetch": "^3.3.2"
+    "discord.js": "^14.27.0"
   }
 }
