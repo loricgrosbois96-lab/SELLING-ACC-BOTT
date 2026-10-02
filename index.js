@@ -26,12 +26,12 @@ const client = new Client({
 const cachedStats = new Map();
 let updateInProgress = false;
 
-// Temps minimum entre deux mises à jour Roblox
+// Mise à jour toutes les 10 minutes
 const ROBLOX_UPDATE_INTERVAL = 10 * 60 * 1000;
 
-// Temps pendant lequel on évite de refaire une requête
-// après un RATE_LIMIT
+// Cooldown après un RATE_LIMIT Roblox
 const robloxCooldown = new Map();
+
 
 // ======================================================
 // 🎫 TICKETS
@@ -74,10 +74,15 @@ async function sendTicketPanel() {
         });
 
         console.log("✅ Panel tickets envoyé.");
+
     } catch (error) {
-        console.error("❌ Erreur panel tickets :", error);
+        console.error(
+            "❌ Erreur panel tickets :",
+            error
+        );
     }
 }
+
 
 // ======================================================
 // 📜 RÈGLEMENT
@@ -147,13 +152,18 @@ async function sendRulesPanel() {
         });
 
         console.log("✅ Panel règlement envoyé.");
+
     } catch (error) {
-        console.error("❌ Erreur panel règlement :", error);
+        console.error(
+            "❌ Erreur panel règlement :",
+            error
+        );
     }
 }
 
+
 // ======================================================
-// 🎮 ROBLOX
+// 🎮 ROBLOX - RECHERCHE UTILISATEUR
 // ======================================================
 
 async function getRobloxUser(username) {
@@ -174,13 +184,16 @@ async function getRobloxUser(username) {
 
         if (response.status === 429) {
             console.log(
-                `⚠️ Roblox limite la recherche du compte ${username}.`
+                `⚠️ Roblox limite la recherche de ${username}.`
             );
+
             return null;
         }
 
         if (!response.ok) {
-            throw new Error(`Roblox HTTP ${response.status}`);
+            throw new Error(
+                `Roblox HTTP ${response.status}`
+            );
         }
 
         const data = await response.json();
@@ -190,6 +203,7 @@ async function getRobloxUser(username) {
         }
 
         return data.data[0];
+
     } catch (error) {
         console.error(
             `❌ Erreur utilisateur Roblox ${username}:`,
@@ -200,19 +214,20 @@ async function getRobloxUser(username) {
     }
 }
 
+
 // ======================================================
-// 📊 STATS ROBLOX
+// 📊 ROBLOX - STATS
 // ======================================================
 
 async function getRobloxStats(userId) {
 
-    // Si Roblox nous a récemment limité pour cet utilisateur,
-    // on utilise directement le cache.
+    // Vérifie si ce compte est actuellement en cooldown
     const cooldownUntil = robloxCooldown.get(userId);
 
     if (cooldownUntil && Date.now() < cooldownUntil) {
+
         console.log(
-            `⏳ Roblox cooldown pour ${userId}, utilisation du cache.`
+            `⏳ Cooldown Roblox pour ${userId}, utilisation du cache.`
         );
 
         return cachedStats.get(userId) || null;
@@ -232,6 +247,7 @@ async function getRobloxStats(userId) {
     const results = {};
 
     try {
+
         for (const [key, url] of Object.entries(endpoints)) {
 
             const response = await fetch(url);
@@ -248,9 +264,11 @@ async function getRobloxStats(userId) {
                 let cooldown = 10 * 60 * 1000;
 
                 if (retryAfter) {
+
                     const seconds = Number(retryAfter);
 
                     if (!Number.isNaN(seconds)) {
+
                         cooldown = Math.max(
                             seconds * 1000,
                             30 * 1000
@@ -265,15 +283,17 @@ async function getRobloxStats(userId) {
 
                 console.log(
                     `⚠️ Roblox RATE_LIMIT pour ${userId}. ` +
-                    `Pause pendant ${Math.ceil(cooldown / 1000)} secondes.`
+                    `Pause ${Math.ceil(cooldown / 1000)} secondes.`
                 );
 
-                // On garde les anciennes statistiques
+                // On garde les anciennes stats
                 return cachedStats.get(userId) || null;
             }
 
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
             }
 
             results[key] = await response.json();
@@ -285,11 +305,10 @@ async function getRobloxStats(userId) {
             following: results.following.count
         };
 
-        // Sauvegarde dans le cache
+        // Sauvegarde du cache
         cachedStats.set(userId, stats);
 
-        // Si la requête fonctionne à nouveau,
-        // on retire le cooldown.
+        // Requête réussie
         robloxCooldown.delete(userId);
 
         return stats;
@@ -297,22 +316,22 @@ async function getRobloxStats(userId) {
     } catch (error) {
 
         console.error(
-            `❌ Erreur stats Roblox ${userId} :`,
+            `❌ Erreur stats Roblox ${userId}:`,
             error.message
         );
 
-        // En cas d'erreur temporaire,
-        // on garde les anciennes statistiques.
         return cachedStats.get(userId) || null;
     }
 }
 
+
 // ======================================================
-// 🖼️ AVATAR ROBLOX
+// 🖼️ ROBLOX - AVATAR
 // ======================================================
 
 async function getRobloxAvatar(userId) {
     try {
+
         const url =
             `https://thumbnails.roblox.com/v1/users/avatar-headshot` +
             `?userIds=${userId}` +
@@ -331,6 +350,7 @@ async function getRobloxAvatar(userId) {
         return data.data?.[0]?.imageUrl || null;
 
     } catch (error) {
+
         console.error(
             "❌ Erreur avatar Roblox :",
             error
@@ -340,15 +360,19 @@ async function getRobloxAvatar(userId) {
     }
 }
 
+
 // ======================================================
-// 📦 RÉCUPÉRATION DES COMPTES
+// 📦 DONNÉES D'UN COMPTE
 // ======================================================
 
 async function getAccountData(account) {
 
-    const user = await getRobloxUser(account.username);
+    const user = await getRobloxUser(
+        account.username
+    );
 
     if (!user) {
+
         return {
             ...account,
             userId: null,
@@ -358,23 +382,31 @@ async function getAccountData(account) {
         };
     }
 
-    const stats = await getRobloxStats(user.id);
-    const avatar = await getRobloxAvatar(user.id);
+    const stats =
+        await getRobloxStats(user.id);
+
+    const avatar =
+        await getRobloxAvatar(user.id);
 
     return {
         ...account,
         userId: user.id,
         displayName: user.displayName,
-        stats: stats || cachedStats.get(user.id) || null,
+        stats:
+            stats ||
+            cachedStats.get(user.id) ||
+            null,
         avatar
     };
 }
+
 
 // ======================================================
 // 💰 PRIX
 // ======================================================
 
 function getPrice(name) {
+
     switch (name) {
 
         case "5K acc":
@@ -397,55 +429,94 @@ function getPrice(name) {
     }
 }
 
+
 // ======================================================
-// 🎮 EMBED SELLING
+// 🎮 EMBED = 1 COMPTE
 // ======================================================
 
-function createSellingEmbed(accounts) {
+function createAccountEmbed(account) {
+
+    const displayName =
+        account.displayName ||
+        account.username;
+
+    const stats = account.stats;
+
+    const friends =
+        stats?.friends ?? "?";
+
+    const followers =
+        stats?.followers ?? "?";
+
+    const following =
+        stats?.following ?? "?";
+
+    const price =
+        getPrice(account.name);
 
     const embed = new EmbedBuilder()
-        .setTitle("🎮 Comptes Roblox disponibles")
-        .setDescription(
-            "Voici les comptes actuellement disponibles.\n" +
-            "Les statistiques sont mises à jour automatiquement."
-        )
+        .setTitle(`🎮 ${account.name}`)
         .setColor(0x5865F2)
+
+        .setDescription(
+            `👤 **${displayName}**\n` +
+            `🏷️ @${account.username}\n\n` +
+
+            `🆔 **ID Roblox**    ` +
+            `👥 **Amis**    ` +
+            `👤 **Followers**\n` +
+
+            `\`${account.userId || "Inconnu"}\`    ` +
+            `**${friends}**    ` +
+            `**${followers}**\n\n` +
+
+            `➡️ **Following**\n` +
+            `**${following}**\n\n` +
+
+            `💰 **Prix :** ${price}`
+        )
+
+        .setFooter({
+            text: "LoricBot • Informations Roblox"
+        })
+
         .setTimestamp();
 
-    for (const account of accounts) {
-
-        let statsText =
-            "⚠️ Statistiques indisponibles";
-
-        if (account.stats) {
-            statsText =
-                `👥 Amis : **${account.stats.friends}**\n` +
-                `👤 Followers : **${account.stats.followers}**\n` +
-                `➡️ Following : **${account.stats.following}**`;
-        }
-
-        embed.addFields({
-            name: `🎮 ${account.name}`,
-
-            value:
-                `**Username :** \`${account.username}\`\n` +
-                `💰 **Prix :** ${getPrice(account.name)}\n\n` +
-                statsText,
-
-            inline: false
-        });
-
-        if (account.avatar) {
-            embed.setThumbnail(account.avatar);
-        }
+    if (account.avatar) {
+        embed.setThumbnail(account.avatar);
     }
-
-    embed.setFooter({
-        text: "Selling ACC • Mise à jour automatique"
-    });
 
     return embed;
 }
+
+
+// ======================================================
+// 🔎 RECHERCHE DES ANCIENS EMBEDS
+// ======================================================
+
+function isRobloxEmbed(message) {
+
+    if (!message.embeds.length) {
+        return false;
+    }
+
+    const embed = message.embeds[0];
+
+    const title =
+        embed.title || "";
+
+    const footer =
+        embed.footer?.text || "";
+
+    return (
+        title.startsWith("🎮 ") &&
+        (
+            footer.includes("LoricBot") ||
+            title === "🎮 Comptes Roblox disponibles"
+        )
+    );
+}
+
 
 // ======================================================
 // 🔄 UPDATE SELLING
@@ -454,9 +525,11 @@ function createSellingEmbed(accounts) {
 async function updateSellingMessage() {
 
     if (updateInProgress) {
+
         console.log(
-            "⏳ Une mise à jour Roblox est déjà en cours."
+            "⏳ Mise à jour Roblox déjà en cours."
         );
+
         return;
     }
 
@@ -464,68 +537,158 @@ async function updateSellingMessage() {
 
     try {
 
-        const channel = await client.channels.fetch(
-            config.sellingChannelId
-        );
+        const channel =
+            await client.channels.fetch(
+                config.sellingChannelId
+            );
 
         if (!channel) {
+
             console.log(
                 "❌ Salon selling introuvable."
             );
+
             return;
         }
 
         const accounts = [];
 
-        // On traite les comptes un par un.
+        // Récupération compte par compte
         for (const account of config.robloxAccounts) {
 
-            const data = await getAccountData(account);
+            const data =
+                await getAccountData(account);
 
             accounts.push(data);
 
             // Petite pause entre les comptes
-            // pour éviter d'envoyer trop de requêtes
-            // d'un coup.
             await new Promise(resolve =>
                 setTimeout(resolve, 1500)
             );
         }
 
-        const messages = await channel.messages.fetch({
-            limit: 50
-        });
+        // ==================================================
+        // EMBEDS
+        // ==================================================
 
-        const botMessage = messages.find(
-            message =>
+        const embeds =
+            accounts.map(account =>
+                createAccountEmbed(account)
+            );
+
+        // ==================================================
+        // MESSAGES EXISTANTS
+        // ==================================================
+
+        const messages =
+            await channel.messages.fetch({
+                limit: 100
+            });
+
+        let existingMessages =
+            messages
+                .filter(message =>
+                    message.author.id === client.user.id &&
+                    isRobloxEmbed(message)
+                )
+                .sort(
+                    (a, b) =>
+                        a.createdTimestamp -
+                        b.createdTimestamp
+                );
+
+        // ==================================================
+        // SUPPRESSION DE L'ANCIEN GROS EMBED
+        // ==================================================
+
+        const oldMessage =
+            messages.find(message =>
                 message.author.id === client.user.id &&
                 message.embeds.length > 0 &&
                 message.embeds[0].title ===
                     "🎮 Comptes Roblox disponibles"
-        );
-
-        const embed = createSellingEmbed(accounts);
-
-        if (botMessage) {
-
-            await botMessage.edit({
-                embeds: [embed]
-            });
-
-            console.log(
-                "🔄 Message Roblox mis à jour."
             );
 
-        } else {
+        if (oldMessage) {
 
-            await channel.send({
-                embeds: [embed]
-            });
+            try {
 
-            console.log(
-                "✅ Message Roblox créé."
+                await oldMessage.delete();
+
+                console.log(
+                    "🗑️ Ancien embed Roblox supprimé."
+                );
+
+            } catch (error) {
+
+                console.log(
+                    "⚠️ Impossible de supprimer l'ancien embed."
+                );
+            }
+
+            existingMessages =
+                existingMessages.filter(
+                    message =>
+                        message.id !== oldMessage.id
+                );
+        }
+
+        // ==================================================
+        // MISE À JOUR / CRÉATION
+        // ==================================================
+
+        for (let i = 0; i < embeds.length; i++) {
+
+            const existing =
+                existingMessages[i];
+
+            if (existing) {
+
+                await existing.edit({
+                    embeds: [embeds[i]]
+                });
+
+            } else {
+
+                await channel.send({
+                    embeds: [embeds[i]]
+                });
+            }
+
+            // Petite pause Discord
+            await new Promise(resolve =>
+                setTimeout(resolve, 500)
             );
         }
+
+        // ==================================================
+        // SUPPRIME LES EMBEDS EN TROP
+        // ==================================================
+
+        if (existingMessages.length > embeds.length) {
+
+            for (
+                let i = embeds.length;
+                i < existingMessages.length;
+                i++
+            ) {
+
+                try {
+
+                    await existingMessages[i].delete();
+
+                } catch (error) {
+
+                    console.log(
+                        "⚠️ Impossible de supprimer un ancien embed."
+                    );
+                }
+            }
+        }
+
+        console.log(
+            "🔄 Comptes Roblox mis à jour."
+        );
 
     } catch (error) {
 
@@ -540,6 +703,7 @@ async function updateSellingMessage() {
     }
 }
 
+
 // ======================================================
 // 🟢 BOT READY
 // ======================================================
@@ -547,7 +711,7 @@ async function updateSellingMessage() {
 client.once("clientReady", async () => {
 
     console.log(
-        `✅ Connecté en tant que ${client.user.tag}`
+        `✅ Connecté en tant ${client.user.tag}`
     );
 
     await sendTicketPanel();
@@ -564,203 +728,237 @@ client.once("clientReady", async () => {
     }, ROBLOX_UPDATE_INTERVAL);
 });
 
+
 // ======================================================
 // 🖱️ INTERACTIONS
 // ======================================================
 
-client.on("interactionCreate", async interaction => {
+client.on(
+    "interactionCreate",
+    async interaction => {
 
-    if (!interaction.isButton()) {
-        return;
-    }
+        if (!interaction.isButton()) {
+            return;
+        }
 
-    // ==================================================
-    // 🎫 CRÉATION TICKET
-    // ==================================================
 
-    if (interaction.customId === "create_ticket") {
+        // ==================================================
+        // 🎫 CRÉATION TICKET
+        // ==================================================
 
-        try {
+        if (
+            interaction.customId ===
+            "create_ticket"
+        ) {
 
-            const guild = interaction.guild;
+            try {
 
-            if (!guild) {
-                return;
-            }
+                const guild =
+                    interaction.guild;
 
-            const existingChannel =
-                guild.channels.cache.find(
-                    channel =>
-                        channel.name ===
-                        `ticket-${interaction.user.username.toLowerCase()}`
-                );
+                if (!guild) {
+                    return;
+                }
 
-            if (existingChannel) {
+                const existingChannel =
+                    guild.channels.cache.find(
+                        channel =>
+                            channel.name ===
+                            `ticket-${interaction.user.username.toLowerCase()}`
+                    );
 
-                await interaction.reply({
+                if (existingChannel) {
+
+                    await interaction.reply({
+
+                        content:
+                            `❌ Tu as déjà un ticket ouvert : ${existingChannel}`,
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+
+                    return;
+                }
+
+                const ticketChannel =
+                    await guild.channels.create({
+
+                        name:
+                            `ticket-${interaction.user.username}`,
+
+                        type: 0,
+
+                        permissionOverwrites: [
+
+                            {
+                                id:
+                                    guild.roles.everyone.id,
+
+                                deny: [
+                                    PermissionsBitField.Flags.ViewChannel
+                                ]
+                            },
+
+                            {
+                                id:
+                                    interaction.user.id,
+
+                                allow: [
+                                    PermissionsBitField.Flags.ViewChannel,
+                                    PermissionsBitField.Flags.SendMessages,
+                                    PermissionsBitField.Flags.ReadMessageHistory
+                                ]
+                            }
+                        ]
+                    });
+
+                const embed =
+                    new EmbedBuilder()
+
+                        .setTitle("🎫 Ticket")
+
+                        .setDescription(
+                            `Bonjour ${interaction.user} 👋\n\n` +
+                            "Explique ton problème et un membre du staff viendra t'aider.\n\n" +
+                            "Merci de ne pas spammer."
+                        )
+
+                        .setColor(0x5865F2);
+
+                await ticketChannel.send({
+
                     content:
-                        `❌ Tu as déjà un ticket ouvert : ${existingChannel}`,
+                        `${interaction.user}`,
 
-                    flags: MessageFlags.Ephemeral
-                });
-
-                return;
-            }
-
-            const ticketChannel =
-                await guild.channels.create({
-
-                    name:
-                        `ticket-${interaction.user.username}`,
-
-                    type: 0,
-
-                    permissionOverwrites: [
-
-                        {
-                            id: guild.roles.everyone.id,
-
-                            deny: [
-                                PermissionsBitField.Flags.ViewChannel
-                            ]
-                        },
-
-                        {
-                            id: interaction.user.id,
-
-                            allow: [
-                                PermissionsBitField.Flags.ViewChannel,
-                                PermissionsBitField.Flags.SendMessages,
-                                PermissionsBitField.Flags.ReadMessageHistory
-                            ]
-                        }
+                    embeds: [
+                        embed
                     ]
                 });
 
-            const embed = new EmbedBuilder()
-                .setTitle("🎫 Ticket")
-                .setDescription(
-                    `Bonjour ${interaction.user} 👋\n\n` +
-                    "Explique ton problème et un membre du staff viendra t'aider.\n\n" +
-                    "Merci de ne pas spammer."
-                )
-                .setColor(0x5865F2);
+                await interaction.reply({
 
-            await ticketChannel.send({
+                    content:
+                        `✅ Ton ticket a été créé : ${ticketChannel}`,
 
-                content:
-                    `${interaction.user}`,
+                    flags:
+                        MessageFlags.Ephemeral
+                });
 
-                embeds: [embed]
-            });
+            } catch (error) {
 
-            await interaction.reply({
+                console.error(
+                    "❌ Erreur création ticket :",
+                    error
+                );
 
-                content:
-                    `✅ Ton ticket a été créé : ${ticketChannel}`,
+                if (!interaction.replied) {
 
-                flags: MessageFlags.Ephemeral
-            });
+                    await interaction.reply({
 
-        } catch (error) {
+                        content:
+                            "❌ Impossible de créer le ticket.",
 
-            console.error(
-                "❌ Erreur création ticket :",
-                error
-            );
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+            }
+        }
 
-            if (!interaction.replied) {
+
+        // ==================================================
+        // 📜 ACCEPTATION RÈGLEMENT
+        // ==================================================
+
+        if (
+            interaction.customId ===
+            "accept_rules"
+        ) {
+
+            try {
+
+                const member =
+                    await interaction.guild.members.fetch(
+                        interaction.user.id
+                    );
+
+                const role =
+                    interaction.guild.roles.cache.get(
+                        config.verifiedRoleId
+                    );
+
+                if (!role) {
+
+                    await interaction.reply({
+
+                        content:
+                            "❌ Le rôle `VerifiedMember` est introuvable.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+
+                    return;
+                }
+
+                if (
+                    member.roles.cache.has(
+                        role.id
+                    )
+                ) {
+
+                    await interaction.reply({
+
+                        content:
+                            "✅ Tu es déjà vérifié !",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+
+                    return;
+                }
+
+                await member.roles.add(role);
 
                 await interaction.reply({
 
                     content:
-                        "❌ Impossible de créer le ticket.",
+                        "✅ **Règlement accepté !**\n" +
+                        "Tu as reçu le rôle **VerifiedMember**. Bienvenue ! 🎉",
 
-                    flags: MessageFlags.Ephemeral
+                    flags:
+                        MessageFlags.Ephemeral
                 });
+
+                console.log(
+                    `✅ ${interaction.user.tag} a accepté le règlement.`
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Erreur attribution VerifiedMember :",
+                    error
+                );
+
+                if (!interaction.replied) {
+
+                    await interaction.reply({
+
+                        content:
+                            "❌ Impossible de te donner le rôle. Vérifie que le bot possède la permission **Gérer les rôles** et que son rôle est placé au-dessus de `VerifiedMember`.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
             }
         }
     }
+);
 
-    // ==================================================
-    // 📜 ACCEPTATION RÈGLEMENT
-    // ==================================================
-
-    if (interaction.customId === "accept_rules") {
-
-        try {
-
-            const member =
-                await interaction.guild.members.fetch(
-                    interaction.user.id
-                );
-
-            const role =
-                interaction.guild.roles.cache.get(
-                    config.verifiedRoleId
-                );
-
-            if (!role) {
-
-                await interaction.reply({
-
-                    content:
-                        "❌ Le rôle `VerifiedMember` est introuvable.",
-
-                    flags: MessageFlags.Ephemeral
-                });
-
-                return;
-            }
-
-            if (member.roles.cache.has(role.id)) {
-
-                await interaction.reply({
-
-                    content:
-                        "✅ Tu es déjà vérifié !",
-
-                    flags: MessageFlags.Ephemeral
-                });
-
-                return;
-            }
-
-            await member.roles.add(role);
-
-            await interaction.reply({
-
-                content:
-                    "✅ **Règlement accepté !**\n" +
-                    "Tu as reçu le rôle **VerifiedMember**. Bienvenue ! 🎉",
-
-                flags: MessageFlags.Ephemeral
-            });
-
-            console.log(
-                `✅ ${interaction.user.tag} a accepté le règlement.`
-            );
-
-        } catch (error) {
-
-            console.error(
-                "❌ Erreur attribution VerifiedMember :",
-                error
-            );
-
-            if (!interaction.replied) {
-
-                await interaction.reply({
-
-                    content:
-                        "❌ Impossible de te donner le rôle. Vérifie que le bot possède la permission **Gérer les rôles** et que son rôle est placé au-dessus de `VerifiedMember`.",
-
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-        }
-    }
-});
 
 // ======================================================
 // 🔑 CONNEXION
