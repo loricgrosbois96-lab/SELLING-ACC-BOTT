@@ -10,6 +10,10 @@ const {
 
 const config = require("./config.js");
 
+// ======================================================
+// 🤖 CLIENT DISCORD
+// ======================================================
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -18,11 +22,11 @@ const client = new Client({
 });
 
 // ======================================================
-// ⚙️ CONFIG
+// ⚙️ CONFIGURATION
 // ======================================================
 
-const UPDATE_INTERVAL = 5 * 60 * 1000;
-const RETRY_DELAY = 5000;
+const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const RETRY_DELAY = 5000; // 5 secondes
 
 let sellingMessage = null;
 let updateRunning = false;
@@ -36,11 +40,13 @@ function sleep(ms) {
 }
 
 // ======================================================
-// 🔐 MASQUAGE
+// 🔐 MASQUER UNE INFORMATION
 // ======================================================
 
 function mask(value, visible = 5) {
-    if (!value) return "*****";
+    if (value === undefined || value === null) {
+        return "*****";
+    }
 
     value = String(value);
 
@@ -52,7 +58,7 @@ function mask(value, visible = 5) {
 }
 
 // ======================================================
-// 👤 RÉCUPÉRER USERNAME
+// 👤 RÉCUPÉRER LE USERNAME ROBLOX
 // ======================================================
 
 function getRobloxUsername(account) {
@@ -76,7 +82,7 @@ function getRobloxUsername(account) {
 }
 
 // ======================================================
-// 🌐 FETCH ROBLOX AVEC RETRY
+// 🌐 FETCH ROBLOX AVEC RETRY AUTOMATIQUE
 // ======================================================
 
 async function robloxFetch(url, options = {}) {
@@ -84,12 +90,16 @@ async function robloxFetch(url, options = {}) {
         try {
             const response = await fetch(url, options);
 
+            // Tout va bien
             if (response.ok) {
                 return response;
             }
 
+            // Rate limit Roblox
             if (response.status === 429) {
-                const retryAfter = response.headers.get("retry-after");
+                const retryAfter = response.headers.get(
+                    "retry-after"
+                );
 
                 let delay = RETRY_DELAY;
 
@@ -97,7 +107,10 @@ async function robloxFetch(url, options = {}) {
                     const seconds = Number(retryAfter);
 
                     if (!isNaN(seconds)) {
-                        delay = Math.max(seconds * 1000, RETRY_DELAY);
+                        delay = Math.max(
+                            seconds * 1000,
+                            RETRY_DELAY
+                        );
                     }
                 }
 
@@ -109,7 +122,13 @@ async function robloxFetch(url, options = {}) {
                 continue;
             }
 
-            if ([500, 502, 503, 504].includes(response.status)) {
+            // Erreurs temporaires Roblox
+            if (
+                response.status === 500 ||
+                response.status === 502 ||
+                response.status === 503 ||
+                response.status === 504
+            ) {
                 console.log(
                     `⚠️ Roblox HTTP ${response.status} - nouvelle tentative dans ${RETRY_DELAY / 1000}s`
                 );
@@ -118,10 +137,17 @@ async function robloxFetch(url, options = {}) {
                 continue;
             }
 
-            throw new Error(`Roblox HTTP ${response.status}`);
+            throw new Error(
+                `Roblox HTTP ${response.status}`
+            );
+
         } catch (error) {
             console.log(
-                `⚠️ Erreur Roblox : ${error.message} - nouvelle tentative dans ${RETRY_DELAY / 1000}s`
+                `⚠️ Erreur Roblox : ${error.message}`
+            );
+
+            console.log(
+                `🔄 Nouvelle tentative dans ${RETRY_DELAY / 1000}s...`
             );
 
             await sleep(RETRY_DELAY);
@@ -130,7 +156,7 @@ async function robloxFetch(url, options = {}) {
 }
 
 // ======================================================
-// 🔎 TROUVER USER ROBLOX
+// 🔎 TROUVER UN UTILISATEUR ROBLOX
 // ======================================================
 
 async function getRobloxUser(username) {
@@ -150,39 +176,52 @@ async function getRobloxUser(username) {
 
     const data = await response.json();
 
-    if (!data.data || !data.data.length) {
-        throw new Error(`Compte Roblox introuvable : ${username}`);
+    if (
+        !data.data ||
+        !data.data.length
+    ) {
+        throw new Error(
+            `Compte Roblox introuvable : ${username}`
+        );
     }
 
     return data.data[0];
 }
 
 // ======================================================
-// 📊 STATS ROBLOX
+// 📊 RÉCUPÉRER LES STATISTIQUES
 // ======================================================
 
 async function getRobloxStats(userId) {
+
+    // Amis
     const friendsResponse = await robloxFetch(
         `https://friends.roblox.com/v1/users/${userId}/friends/count`
     );
 
-    const friendsData = await friendsResponse.json();
+    const friendsData =
+        await friendsResponse.json();
 
+    // Petite pause pour limiter les 429
     await sleep(1000);
 
+    // Followers
     const followersResponse = await robloxFetch(
         `https://friends.roblox.com/v1/users/${userId}/followers/count`
     );
 
-    const followersData = await followersResponse.json();
+    const followersData =
+        await followersResponse.json();
 
     await sleep(1000);
 
+    // Following
     const followingResponse = await robloxFetch(
         `https://friends.roblox.com/v1/users/${userId}/followings/count`
     );
 
-    const followingData = await followingResponse.json();
+    const followingData =
+        await followingResponse.json();
 
     return {
         friends: friendsData.count ?? 0,
@@ -192,7 +231,7 @@ async function getRobloxStats(userId) {
 }
 
 // ======================================================
-// 🖼️ AVATAR ROBLOX
+// 🖼️ RÉCUPÉRER L'AVATAR
 // ======================================================
 
 async function getRobloxAvatar(userId) {
@@ -218,63 +257,103 @@ async function getRobloxAvatar(userId) {
 // ======================================================
 
 async function getAccountData(account) {
-    const username = getRobloxUsername(account);
+
+    const username =
+        getRobloxUsername(account);
 
     if (!username) {
-        throw new Error("Username Roblox invalide dans config.js");
+        throw new Error(
+            "Username Roblox invalide dans config.js"
+        );
     }
 
-    console.log(`🎮 Récupération de ${username}`);
+    console.log(
+        `🎮 Récupération de ${username}`
+    );
 
-    const user = await getRobloxUser(username);
+    // User Roblox
+    const user =
+        await getRobloxUser(username);
 
-    const stats = await getRobloxStats(user.id);
+    // Stats
+    const stats =
+        await getRobloxStats(user.id);
 
-    const avatar = await getRobloxAvatar(user.id);
+    // Avatar
+    const avatar =
+        await getRobloxAvatar(user.id);
 
-    console.log(`✅ Données récupérées pour ${username}`);
+    console.log(
+        `✅ Données récupérées pour ${username}`
+    );
 
     return {
-        label: account.name || username,
+        // Nom configuré dans config.js
+        label:
+            account.name || username,
 
-        username: user.name,
+        username:
+            user.name,
 
-        displayName: user.displayName,
+        displayName:
+            user.displayName,
 
-        userId: user.id,
+        userId:
+            user.id,
 
-        friends: stats.friends,
-        followers: stats.followers,
-        following: stats.following,
+        friends:
+            stats.friends,
+
+        followers:
+            stats.followers,
+
+        following:
+            stats.following,
 
         avatar
     };
 }
 
 // ======================================================
-// 🔄 RÉCUPÉRATION DE TOUS LES COMPTES
+// 🔄 RÉCUPÉRER TOUS LES COMPTES
 // ======================================================
 
 async function getAllAccounts() {
+
     const accounts = [];
 
-    for (let i = 0; i < config.robloxAccounts.length; i++) {
-        const account = config.robloxAccounts[i];
+    for (
+        let i = 0;
+        i < config.robloxAccounts.length;
+        i++
+    ) {
+
+        const account =
+            config.robloxAccounts[i];
+
+        const username =
+            getRobloxUsername(account);
 
         console.log(
-            `🎮 Compte ${i + 1}/${config.robloxAccounts.length} : ${getRobloxUsername(account)}`
+            `🎮 Compte ${i + 1}/${config.robloxAccounts.length} : ${username}`
         );
 
+        // Retry jusqu'à réussite
         while (true) {
+
             try {
-                const data = await getAccountData(account);
+
+                const data =
+                    await getAccountData(account);
 
                 accounts.push(data);
 
                 break;
+
             } catch (error) {
+
                 console.log(
-                    `❌ Erreur pour ${getRobloxUsername(account)} : ${error.message}`
+                    `❌ Erreur pour ${username} : ${error.message}`
                 );
 
                 console.log(
@@ -290,53 +369,68 @@ async function getAllAccounts() {
 }
 
 // ======================================================
-// 🎮 EMBED COMPTE ROBLOX
+// 🎮 EMBED D'UN COMPTE
 // ======================================================
 
 function createAccountEmbed(account) {
-    const embed = new EmbedBuilder()
-        .setTitle(`🎮 ${account.label}`)
-        .setColor(0x2b2d31)
 
-        .addFields(
-            {
-                name: "👤 Nom",
-                value: `**${mask(account.displayName)}**`,
-                inline: true
-            },
-            {
-                name: "🏷️ Username",
-                value: `**@${mask(account.username)}**`,
-                inline: true
-            },
-            {
-                name: "🆔 ID Roblox",
-                value: `\`${mask(account.userId, 9)}\``,
-                inline: false
-            },
-            {
-                name: "👥 Amis",
-                value: `**${account.friends.toLocaleString("fr-FR")}**`,
-                inline: true
-            },
-            {
-                name: "👤 Followers",
-                value: `**${account.followers.toLocaleString("fr-FR")}**`,
-                inline: true
-            },
-            {
-                name: "➡️ Following",
-                value: `**${account.following.toLocaleString("fr-FR")}**`,
-                inline: true
-            }
-        )
-        .setFooter({
-            text: "LoricBot • Informations Roblox"
-        })
-        .setTimestamp();
+    const embed =
+        new EmbedBuilder()
+            .setTitle(
+                `🎮 ${account.label}`
+            )
+            .setColor(0x2b2d31)
+
+            .addFields(
+                {
+                    name: "👤 Nom",
+                    value:
+                        `**${mask(account.displayName)}**`,
+                    inline: true
+                },
+                {
+                    name: "🏷️ Username",
+                    value:
+                        `**@${mask(account.username)}**`,
+                    inline: true
+                },
+                {
+                    name: "🆔 ID Roblox",
+                    value:
+                        `\`${mask(account.userId, 9)}\``,
+                    inline: false
+                },
+                {
+                    name: "👥 Amis",
+                    value:
+                        `**${account.friends.toLocaleString("fr-FR")}**`,
+                    inline: true
+                },
+                {
+                    name: "👤 Followers",
+                    value:
+                        `**${account.followers.toLocaleString("fr-FR")}**`,
+                    inline: true
+                },
+                {
+                    name: "➡️ Following",
+                    value:
+                        `**${account.following.toLocaleString("fr-FR")}**`,
+                    inline: true
+                }
+            )
+
+            .setFooter({
+                text:
+                    "LoricBot • Informations Roblox"
+            })
+
+            .setTimestamp();
 
     if (account.avatar) {
-        embed.setThumbnail(account.avatar);
+        embed.setThumbnail(
+            account.avatar
+        );
     }
 
     return embed;
@@ -347,12 +441,17 @@ function createAccountEmbed(account) {
 // ======================================================
 
 function createPricesEmbed() {
+
     return new EmbedBuilder()
-        .setTitle("💰 PRICES FOR ACCOUNTS")
+        .setTitle(
+            "💰 PRICES FOR ACCOUNTS"
+        )
         .setColor(0x57f287)
+
         .addFields(
             {
-                name: "200 FOLLOWERS ACC",
+                name:
+                    "200 FOLLOWERS ACC",
                 value:
                     "• 1–2 ADM VAL\n" +
                     "• 10 MM2 VAL\n" +
@@ -360,7 +459,8 @@ function createPricesEmbed() {
                 inline: true
             },
             {
-                name: "500 FOLLOWERS ACC",
+                name:
+                    "500 FOLLOWERS ACC",
                 value:
                     "• 5 ADM VAL\n" +
                     "• 50 MM2 VAL\n" +
@@ -368,7 +468,8 @@ function createPricesEmbed() {
                 inline: true
             },
             {
-                name: "1K FOLLOWERS ACC",
+                name:
+                    "1K FOLLOWERS ACC",
                 value:
                     "• 10 ADM VAL\n" +
                     "• 100 MM2 VAL\n" +
@@ -376,7 +477,8 @@ function createPricesEmbed() {
                 inline: true
             },
             {
-                name: "2K FOLLOWERS ACC",
+                name:
+                    "2K FOLLOWERS ACC",
                 value:
                     "• 20 ADM VAL\n" +
                     "• 200 MM2 VAL\n" +
@@ -384,7 +486,8 @@ function createPricesEmbed() {
                 inline: true
             },
             {
-                name: "5K FOLLOWERS ACC",
+                name:
+                    "5K FOLLOWERS ACC",
                 value:
                     "• 50 ADOPT ME VAL\n" +
                     "• 500 MM2 VAL\n" +
@@ -392,7 +495,8 @@ function createPricesEmbed() {
                 inline: true
             },
             {
-                name: "10K+ FOLLOWERS ACC",
+                name:
+                    "10K+ FOLLOWERS ACC",
                 value:
                     "• 100+ ADM VAL\n" +
                     "• 1K+ MM2 VAL\n" +
@@ -400,53 +504,75 @@ function createPricesEmbed() {
                 inline: true
             }
         )
+
         .setFooter({
-            text: "LoricBot • Prices"
+            text:
+                "LoricBot • Prices"
         });
 }
 
 // ======================================================
-// 🛒 EMBED PRINCIPAL
+// 🛒 HEADER SELLING ACC
 // ======================================================
 
 function createHeaderEmbed() {
+
     return new EmbedBuilder()
-        .setTitle("🛒 Selling ACC")
+        .setTitle(
+            "🛒 Selling ACC"
+        )
+
         .setDescription(
             "🎮 **Comptes Roblox disponibles** ━━━━━━━━━━━━━━━━━━━━\n\n" +
             "📊 Les informations sont récupérées automatiquement.\n" +
             "🔄 Mise à jour toutes les **5 minutes**.\n" +
             "🔐 Certaines informations sont volontairement masquées."
         )
+
         .setColor(0x5865f2);
 }
 
 // ======================================================
-// 📨 TROUVER L'ANCIEN MESSAGE
+// 🔎 TROUVER LE MESSAGE SELLING ACC
 // ======================================================
 
 async function findExistingSellingMessage(channel) {
+
     try {
-        const messages = await channel.messages.fetch({
-            limit: 100
-        });
 
-        const existing = messages.find(message => {
-            if (message.author.id !== client.user.id) {
-                return false;
-            }
+        const messages =
+            await channel.messages.fetch({
+                limit: 100
+            });
 
-            if (!message.embeds || !message.embeds.length) {
-                return false;
-            }
+        const existing =
+            messages.find(message => {
 
-            return message.embeds.some(embed =>
-                embed.title === "🛒 Selling ACC"
-            );
-        });
+                if (
+                    message.author.id !==
+                    client.user.id
+                ) {
+                    return false;
+                }
+
+                if (
+                    !message.embeds ||
+                    !message.embeds.length
+                ) {
+                    return false;
+                }
+
+                return message.embeds.some(
+                    embed =>
+                        embed.title ===
+                        "🛒 Selling ACC"
+                );
+            });
 
         return existing || null;
+
     } catch (error) {
+
         console.log(
             `❌ Impossible de chercher le message existant : ${error.message}`
         );
@@ -456,76 +582,251 @@ async function findExistingSellingMessage(channel) {
 }
 
 // ======================================================
-// 🔄 ACTUALISER LE MESSAGE
+// 🧹 NETTOYER LE SALON SELLING ACC
+// ======================================================
+
+async function cleanSellingChannel(
+    channel,
+    keepMessage
+) {
+
+    try {
+
+        let totalDeleted = 0;
+
+        while (true) {
+
+            const messages =
+                await channel.messages.fetch({
+                    limit: 100
+                });
+
+            const messagesToDelete =
+                messages.filter(
+                    message =>
+                        message.id !==
+                        keepMessage.id
+                );
+
+            if (
+                messagesToDelete.size === 0
+            ) {
+                break;
+            }
+
+            // ==========================================
+            // Messages de moins de 14 jours
+            // ==========================================
+
+            const recentMessages =
+                messagesToDelete.filter(
+                    message =>
+                        Date.now() -
+                            message.createdTimestamp <
+                        14 *
+                            24 *
+                            60 *
+                            60 *
+                            1000
+                );
+
+            if (
+                recentMessages.size > 0
+            ) {
+
+                const deleted =
+                    await channel.bulkDelete(
+                        recentMessages,
+                        true
+                    );
+
+                totalDeleted +=
+                    deleted.size;
+            }
+
+            // ==========================================
+            // Messages de plus de 14 jours
+            // ==========================================
+
+            const oldMessages =
+                messagesToDelete.filter(
+                    message =>
+                        Date.now() -
+                            message.createdTimestamp >=
+                        14 *
+                            24 *
+                            60 *
+                            60 *
+                            1000
+                );
+
+            for (
+                const message of
+                oldMessages.values()
+            ) {
+
+                try {
+
+                    await message.delete();
+
+                    totalDeleted++;
+
+                } catch (error) {
+
+                    console.log(
+                        `⚠️ Impossible de supprimer le message ${message.id}`
+                    );
+                }
+            }
+
+            if (
+                messages.size < 100
+            ) {
+                break;
+            }
+
+            await sleep(1000);
+        }
+
+        console.log(
+            `🧹 ${totalDeleted} message(s) supprimé(s) dans Selling ACC.`
+        );
+
+    } catch (error) {
+
+        console.log(
+            `❌ Erreur nettoyage Selling ACC : ${error.message}`
+        );
+    }
+}
+
+// ======================================================
+// 🔄 ACTUALISER SELLING ACC
 // ======================================================
 
 async function updateSellingMessage() {
+
     if (updateRunning) {
-        console.log("⏳ Une mise à jour est déjà en cours.");
+
+        console.log(
+            "⏳ Une mise à jour est déjà en cours."
+        );
+
         return;
     }
 
     updateRunning = true;
 
     try {
-        const channelId = config.sellingChannelId;
+
+        const channelId =
+            config.sellingChannelId;
 
         if (!channelId) {
-            throw new Error("sellingChannelId manquant dans config.js");
+
+            throw new Error(
+                "sellingChannelId manquant dans config.js"
+            );
         }
 
-        const channel = await client.channels.fetch(channelId);
+        const channel =
+            await client.channels.fetch(
+                channelId
+            );
 
         if (!channel) {
-            throw new Error("Salon Selling ACC introuvable.");
+
+            throw new Error(
+                "Salon Selling ACC introuvable."
+            );
         }
 
-        console.log("🔄 Mise à jour des comptes Roblox...");
+        console.log(
+            "🔄 Mise à jour des comptes Roblox..."
+        );
 
-        const accounts = await getAllAccounts();
+        const accounts =
+            await getAllAccounts();
 
-        console.log("✅ Tous les comptes Roblox ont été récupérés.");
+        console.log(
+            "✅ Tous les comptes Roblox ont été récupérés."
+        );
 
         const embeds = [
             createHeaderEmbed(),
-            ...accounts.map(createAccountEmbed),
+            ...accounts.map(
+                createAccountEmbed
+            ),
             createPricesEmbed()
         ];
 
-        // Recherche du message existant
+        // ==========================================
+        // 🔎 Chercher message existant
+        // ==========================================
+
         if (!sellingMessage) {
-            sellingMessage = await findExistingSellingMessage(channel);
+
+            sellingMessage =
+                await findExistingSellingMessage(
+                    channel
+                );
         }
 
-        // Si aucun message n'existe → création UNE SEULE FOIS
-        if (!sellingMessage) {
-            console.log("📨 Aucun message existant. Création...");
+        // ==========================================
+        // 📨 Créer s'il n'existe pas
+        // ==========================================
 
-            sellingMessage = await channel.send({
-                embeds
-            });
+        if (!sellingMessage) {
+
+            console.log(
+                "📨 Aucun message Selling ACC trouvé. Création..."
+            );
+
+            sellingMessage =
+                await channel.send({
+                    embeds
+                });
 
             console.log(
                 `✅ Message Selling ACC créé : ${sellingMessage.id}`
             );
+
         } else {
-            // Sinon → MODIFICATION du même message
+
+            // ==========================================
+            // ✏️ Modifier le même message
+            // ==========================================
+
             console.log(
-                `✏️ Modification du message Selling ACC : ${sellingMessage.id}`
+                `✏️ Modification du message ${sellingMessage.id}`
             );
 
             await sellingMessage.edit({
                 embeds
             });
 
-            console.log("✅ Message Selling ACC mis à jour.");
+            console.log(
+                "✅ Message Selling ACC mis à jour."
+            );
         }
 
+        // ==========================================
+        // 🧹 Garder uniquement ce message
+        // ==========================================
+
+        await cleanSellingChannel(
+            channel,
+            sellingMessage
+        );
+
     } catch (error) {
+
         console.log(
             `❌ Erreur mise à jour Selling ACC : ${error.message}`
         );
+
     } finally {
+
         updateRunning = false;
     }
 }
@@ -535,54 +836,83 @@ async function updateSellingMessage() {
 // ======================================================
 
 async function setupTicketPanel() {
+
     try {
-        if (!config.ticketChannelId) return;
 
-        const channel = await client.channels.fetch(
-            config.ticketChannelId
-        );
-
-        const messages = await channel.messages.fetch({
-            limit: 50
-        });
-
-        const exists = messages.some(
-            message =>
-                message.author.id === client.user.id &&
-                message.embeds.some(
-                    embed => embed.title === "🎫 Tickets"
-                )
-        );
-
-        if (exists) {
-            console.log("🎫 Panel ticket déjà présent.");
+        if (!config.ticketChannelId) {
             return;
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle("🎫 Tickets")
-            .setDescription(
-                "Besoin d'aide ?\n\n" +
-                "Clique sur le bouton ci-dessous pour créer un ticket."
-            )
-            .setColor(0x5865f2);
+        const channel =
+            await client.channels.fetch(
+                config.ticketChannelId
+            );
 
-        const button = new ButtonBuilder()
-            .setCustomId("create_ticket")
-            .setLabel("Créer un ticket")
-            .setEmoji("🎫")
-            .setStyle(ButtonStyle.Primary);
+        const messages =
+            await channel.messages.fetch({
+                limit: 50
+            });
 
-        const row = new ActionRowBuilder()
-            .addComponents(button);
+        const exists =
+            messages.some(
+                message =>
+                    message.author.id ===
+                        client.user.id &&
+                    message.embeds.some(
+                        embed =>
+                            embed.title ===
+                            "🎫 Tickets"
+                    )
+            );
+
+        if (exists) {
+
+            console.log(
+                "🎫 Panel ticket déjà présent."
+            );
+
+            return;
+        }
+
+        const embed =
+            new EmbedBuilder()
+                .setTitle(
+                    "🎫 Tickets"
+                )
+                .setDescription(
+                    "Besoin d'aide ?\n\n" +
+                    "Clique sur le bouton ci-dessous pour créer un ticket."
+                )
+                .setColor(0x5865f2);
+
+        const button =
+            new ButtonBuilder()
+                .setCustomId(
+                    "create_ticket"
+                )
+                .setLabel(
+                    "Créer un ticket"
+                )
+                .setEmoji("🎫")
+                .setStyle(
+                    ButtonStyle.Primary
+                );
+
+        const row =
+            new ActionRowBuilder()
+                .addComponents(button);
 
         await channel.send({
             embeds: [embed],
             components: [row]
         });
 
-        console.log("✅ Panel ticket créé.");
+        console.log(
+            "✅ Panel ticket créé."
+        );
+
     } catch (error) {
+
         console.log(
             `❌ Erreur panel ticket : ${error.message}`
         );
@@ -594,54 +924,83 @@ async function setupTicketPanel() {
 // ======================================================
 
 async function setupRulesPanel() {
+
     try {
-        if (!config.rulesChannelId) return;
 
-        const channel = await client.channels.fetch(
-            config.rulesChannelId
-        );
-
-        const messages = await channel.messages.fetch({
-            limit: 50
-        });
-
-        const exists = messages.some(
-            message =>
-                message.author.id === client.user.id &&
-                message.embeds.some(
-                    embed => embed.title === "📜 Règlement"
-                )
-        );
-
-        if (exists) {
-            console.log("📜 Panel règlement déjà présent.");
+        if (!config.rulesChannelId) {
             return;
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle("📜 Règlement")
-            .setDescription(
-                "Merci de lire et respecter le règlement du serveur.\n\n" +
-                "Clique sur le bouton ci-dessous pour accepter le règlement."
-            )
-            .setColor(0x57f287);
+        const channel =
+            await client.channels.fetch(
+                config.rulesChannelId
+            );
 
-        const button = new ButtonBuilder()
-            .setCustomId("accept_rules")
-            .setLabel("J'accepte le règlement")
-            .setEmoji("✅")
-            .setStyle(ButtonStyle.Success);
+        const messages =
+            await channel.messages.fetch({
+                limit: 50
+            });
 
-        const row = new ActionRowBuilder()
-            .addComponents(button);
+        const exists =
+            messages.some(
+                message =>
+                    message.author.id ===
+                        client.user.id &&
+                    message.embeds.some(
+                        embed =>
+                            embed.title ===
+                            "📜 Règlement"
+                    )
+            );
+
+        if (exists) {
+
+            console.log(
+                "📜 Panel règlement déjà présent."
+            );
+
+            return;
+        }
+
+        const embed =
+            new EmbedBuilder()
+                .setTitle(
+                    "📜 Règlement"
+                )
+                .setDescription(
+                    "Merci de lire et respecter le règlement du serveur.\n\n" +
+                    "Clique sur le bouton ci-dessous pour accepter le règlement."
+                )
+                .setColor(0x57f287);
+
+        const button =
+            new ButtonBuilder()
+                .setCustomId(
+                    "accept_rules"
+                )
+                .setLabel(
+                    "J'accepte le règlement"
+                )
+                .setEmoji("✅")
+                .setStyle(
+                    ButtonStyle.Success
+                );
+
+        const row =
+            new ActionRowBuilder()
+                .addComponents(button);
 
         await channel.send({
             embeds: [embed],
             components: [row]
         });
 
-        console.log("✅ Panel règlement créé.");
+        console.log(
+            "✅ Panel règlement créé."
+        );
+
     } catch (error) {
+
         console.log(
             `❌ Erreur panel règlement : ${error.message}`
         );
@@ -652,153 +1011,218 @@ async function setupRulesPanel() {
 // 🟢 BOT PRÊT
 // ======================================================
 
-client.once("clientReady", async () => {
-    console.log(`✅ Connecté en tant que ${client.user.tag}`);
+client.once(
+    "clientReady",
+    async () => {
 
-    await setupTicketPanel();
-    await setupRulesPanel();
+        console.log(
+            `✅ Connecté en tant que ${client.user.tag}`
+        );
 
-    // Première création / mise à jour
-    await updateSellingMessage();
+        await setupTicketPanel();
 
-    // Puis toutes les 5 minutes
-    setInterval(async () => {
+        await setupRulesPanel();
+
+        // Première mise à jour
         await updateSellingMessage();
-    }, UPDATE_INTERVAL);
-});
+
+        // Mise à jour toutes les 5 minutes
+        setInterval(
+            async () => {
+                await updateSellingMessage();
+            },
+            UPDATE_INTERVAL
+        );
+    }
+);
 
 // ======================================================
-// 🔘 BOUTONS
+// 🔘 INTERACTIONS
 // ======================================================
 
-client.on("interactionCreate", async interaction => {
-    if (!interaction.isButton()) return;
+client.on(
+    "interactionCreate",
+    async interaction => {
 
-    // ==========================
-    // 📜 RÈGLEMENT
-    // ==========================
-
-    if (interaction.customId === "accept_rules") {
-        try {
-            const roleId = config.verifiedRoleId;
-
-            if (!roleId) {
-                return interaction.reply({
-                    content: "❌ Le rôle vérifié n'est pas configuré.",
-                    ephemeral: true
-                });
-            }
-
-            const role = interaction.guild.roles.cache.get(roleId);
-
-            if (!role) {
-                return interaction.reply({
-                    content: "❌ Rôle introuvable.",
-                    ephemeral: true
-                });
-            }
-
-            await interaction.member.roles.add(role);
-
-            await interaction.reply({
-                content: "✅ Tu as accepté le règlement.",
-                ephemeral: true
-            });
-        } catch (error) {
-            console.log(
-                `❌ Erreur rôle : ${error.message}`
-            );
-
-            if (!interaction.replied) {
-                await interaction.reply({
-                    content: "❌ Impossible de donner le rôle.",
-                    ephemeral: true
-                });
-            }
+        if (!interaction.isButton()) {
+            return;
         }
 
-        return;
-    }
+        // ==============================================
+        // 📜 ACCEPTATION RÈGLEMENT
+        // ==============================================
 
-    // ==========================
-    // 🎫 TICKET
-    // ==========================
+        if (
+            interaction.customId ===
+            "accept_rules"
+        ) {
 
-    if (interaction.customId === "create_ticket") {
-        try {
-            const guild = interaction.guild;
+            try {
 
-            const existing = guild.channels.cache.find(
-                channel =>
-                    channel.name ===
-                    `ticket-${interaction.user.username.toLowerCase()}`
-            );
+                const roleId =
+                    config.verifiedRoleId;
 
-            if (existing) {
-                return interaction.reply({
-                    content: `❌ Tu as déjà un ticket : ${existing}`,
+                if (!roleId) {
+
+                    return interaction.reply({
+                        content:
+                            "❌ Le rôle vérifié n'est pas configuré.",
+                        ephemeral: true
+                    });
+                }
+
+                const role =
+                    interaction.guild.roles.cache.get(
+                        roleId
+                    );
+
+                if (!role) {
+
+                    return interaction.reply({
+                        content:
+                            "❌ Rôle introuvable.",
+                        ephemeral: true
+                    });
+                }
+
+                await interaction.member.roles.add(
+                    role
+                );
+
+                await interaction.reply({
+                    content:
+                        "✅ Tu as accepté le règlement.",
                     ephemeral: true
                 });
+
+            } catch (error) {
+
+                console.log(
+                    `❌ Erreur rôle : ${error.message}`
+                );
+
+                if (!interaction.replied) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Impossible de donner le rôle.",
+                        ephemeral: true
+                    });
+                }
             }
 
-            const channel = await guild.channels.create({
-                name: `ticket-${interaction.user.username}`,
-                type: 0,
-                permissionOverwrites: [
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: [
-                            PermissionsBitField.Flags.ViewChannel
+            return;
+        }
+
+        // ==============================================
+        // 🎫 CRÉATION TICKET
+        // ==============================================
+
+        if (
+            interaction.customId ===
+            "create_ticket"
+        ) {
+
+            try {
+
+                const guild =
+                    interaction.guild;
+
+                const ticketName =
+                    `ticket-${interaction.user.username.toLowerCase()}`;
+
+                const existing =
+                    guild.channels.cache.find(
+                        channel =>
+                            channel.name ===
+                            ticketName
+                    );
+
+                if (existing) {
+
+                    return interaction.reply({
+                        content:
+                            `❌ Tu as déjà un ticket : ${existing}`,
+                        ephemeral: true
+                    });
+                }
+
+                const channel =
+                    await guild.channels.create({
+                        name: ticketName,
+                        type: 0,
+
+                        permissionOverwrites: [
+                            {
+                                id:
+                                    guild.roles.everyone.id,
+
+                                deny: [
+                                    PermissionsBitField.Flags.ViewChannel
+                                ]
+                            },
+
+                            {
+                                id:
+                                    interaction.user.id,
+
+                                allow: [
+                                    PermissionsBitField.Flags.ViewChannel,
+                                    PermissionsBitField.Flags.SendMessages,
+                                    PermissionsBitField.Flags.ReadMessageHistory
+                                ]
+                            }
                         ]
-                    },
-                    {
-                        id: interaction.user.id,
-                        allow: [
-                            PermissionsBitField.Flags.ViewChannel,
-                            PermissionsBitField.Flags.SendMessages,
-                            PermissionsBitField.Flags.ReadMessageHistory
-                        ]
-                    }
-                ]
-            });
+                    });
 
-            const embed = new EmbedBuilder()
-                .setTitle("🎫 Ticket")
-                .setDescription(
-                    `Bonjour ${interaction.user},\n\n` +
-                    "Explique ton problème ici. Un membre du staff viendra t'aider."
-                )
-                .setColor(0x5865f2);
+                const embed =
+                    new EmbedBuilder()
+                        .setTitle(
+                            "🎫 Ticket"
+                        )
+                        .setDescription(
+                            `Bonjour ${interaction.user},\n\n` +
+                            "Explique ton problème ici. Un membre du staff viendra t'aider."
+                        )
+                        .setColor(0x5865f2);
 
-            await channel.send({
-                content: `${interaction.user}`,
-                embeds: [embed]
-            });
+                await channel.send({
+                    content:
+                        `${interaction.user}`,
+                    embeds: [embed]
+                });
 
-            await interaction.reply({
-                content: `✅ Ton ticket a été créé : ${channel}`,
-                ephemeral: true
-            });
-        } catch (error) {
-            console.log(
-                `❌ Erreur création ticket : ${error.message}`
-            );
-
-            if (!interaction.replied) {
                 await interaction.reply({
-                    content: "❌ Impossible de créer le ticket.",
+                    content:
+                        `✅ Ton ticket a été créé : ${channel}`,
                     ephemeral: true
                 });
+
+            } catch (error) {
+
+                console.log(
+                    `❌ Erreur création ticket : ${error.message}`
+                );
+
+                if (!interaction.replied) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Impossible de créer le ticket.",
+                        ephemeral: true
+                    });
+                }
             }
         }
     }
-});
+);
 
 // ======================================================
-// 🔑 LOGIN
+// 🔑 CONNEXION
 // ======================================================
 
 if (!config.token) {
+
     console.error(
         "❌ DISCORD_TOKEN manquant dans les variables d'environnement."
     );
